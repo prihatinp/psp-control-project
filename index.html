@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PSP Project Control | Plant & Special Project</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+</head>
+<body>
+
+<!-- ============ LOADING ============ -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div id="loadingText">Menghubungkan ke server...</div>
+</div>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginScreen" style="display:none;">
+  <div class="login-card">
+    <img src="img/logo-musashi.png" id="loginLogo" alt="Musashi" style="height:30px; margin-bottom:18px;" onerror="this.style.display='none'">
+    <div class="login-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+    </div>
+    <h1>PSP Project Control</h1>
+    <p class="sub">Manufacturing Engineering — Plant & Special Project<br>Masuk untuk memantau progress project automasi & reduce MP.</p>
+    <div class="login-error" id="loginError"></div>
+    <div class="field">
+      <label>Nama Pengguna</label>
+      <select id="loginName">
+        <option value="">— Pilih nama —</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>PIN / Password</label>
+      <input type="password" id="loginPass" placeholder="••••••" onkeypress="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn-primary" id="loginBtn" onclick="doLogin()">Masuk ke Dashboard</button>
+    <div class="login-foot">PT Musashi Autoparts Indonesia · EJIP Cikarang Selatan<br>Data tersimpan permanen di Google Spreadsheet (database aplikasi).</div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+<div class="shell">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+      <div class="brand-text"><div class="t1">PSP Control</div><div class="t2">Project Tracking System</div></div>
+    </div>
+    <img src="img/logo-musashi.png" alt="Musashi" style="height:20px; margin:2px 8px 16px; opacity:.92; filter:brightness(0) invert(1);" onerror="this.style.display='none'">
+
+    <div class="nav-group">
+      <button class="nav-item active" data-page="dashboard" onclick="goPage('dashboard')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        Dashboard
+      </button>
+      <button class="nav-item" data-page="projects" onclick="goPage('projects')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-4"/><path d="M9 15L21 3"/><path d="M15 3h6v6"/></svg>
+        Daftar Project <span class="badge" id="navProjCount">0</span>
+      </button>
+      <button class="nav-item" data-page="addproject" onclick="goPage('addproject')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Tambah Project
+      </button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Update & Review</div>
+      <button class="nav-item" data-page="daily" onclick="goPage('daily')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
+        Update Harian
+      </button>
+      <button class="nav-item" data-page="weekly" onclick="goPage('weekly')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Review Mingguan
+      </button>
+      <button class="nav-item" data-page="monthly" onclick="goPage('monthly')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
+        Review Bulanan
+      </button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Di Luar Project Automasi</div>
+      <button class="nav-item" data-page="support" onclick="goPage('support')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+        Komarigoto & PICA
+      </button>
+      <button class="nav-item" data-page="global" onclick="goPage('global')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 010 20 15.3 15.3 0 010-20z"/></svg>
+        Support Musashi Group
+      </button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Lainnya</div>
+      <button class="nav-item" data-page="team" onclick="goPage('team')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        Tim PSP
+      </button>
+      <button class="nav-item" onclick="exportToPPT()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export ke PPT
+      </button>
+      <button class="nav-item" onclick="refreshFromServer()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        Muat Ulang Data
+      </button>
+    </div>
+
+    <div class="sidebar-foot">
+      <div class="user-chip">
+        <div class="avatar" id="sideAvatar">–</div>
+        <div><div class="name" id="sideName">–</div><div class="role" id="sideRole">–</div></div>
+      </div>
+      <button class="logout-btn" onclick="doLogout()">↩ Keluar</button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- DASHBOARD -->
+    <section class="page active" id="page-dashboard">
+      <div class="topbar">
+        <div><div class="eyebrow">Manufacturing Engineering · Plant & Special Project</div><h2>Dashboard Kontrol Project</h2></div>
+        <div class="top-actions">
+          <button class="btn btn-outline" onclick="goPage('daily')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
+            Input Update Harian
+          </button>
+          <button class="btn btn-dark" onclick="goPage('addproject')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Project Baru
+          </button>
+        </div>
+      </div>
+
+      <div class="kpi-row" id="kpiRow"></div>
+
+      <div style="display:grid; grid-template-columns:1.3fr 1fr; gap:16px; margin-bottom:20px;">
+        <div class="section-card" style="margin-bottom:0;">
+          <h4>Jumlah Project per Line / Plant</h4>
+          <svg id="lineBarChart" width="100%" height="200" viewBox="0 0 500 200" style="overflow:visible;"></svg>
+        </div>
+        <div class="section-card" style="margin-bottom:0;">
+          <h4>Distribusi Jenis Pekerjaan</h4>
+          <div class="donut-wrap">
+            <svg width="130" height="130" viewBox="0 0 42 42" id="jobTypeDonut" style="flex-shrink:0;"></svg>
+            <div style="flex:1;" id="jobTypeLegend"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="filters">
+        <input type="text" id="dashSearch" placeholder="Cari nama / no project..." oninput="renderDashboardGrid()">
+        <select id="dashStatus" onchange="renderDashboardGrid()">
+          <option value="">Semua Status</option>
+          <option value="ontrack">On Track</option>
+          <option value="warning">Warning</option>
+          <option value="delay">Delay</option>
+          <option value="done">Selesai</option>
+        </select>
+        <select id="dashLine" onchange="renderDashboardGrid()"><option value="">Semua Line</option></select>
+        <select id="dashPic" onchange="renderDashboardGrid()"><option value="">Semua PIC</option></select>
+      </div>
+
+      <div class="proj-grid" id="dashGrid"></div>
+    </section>
+
+    <!-- PROJECTS (table) -->
+    <section class="page" id="page-projects">
+      <div class="topbar">
+        <div><div class="eyebrow">Master Data</div><h2>Daftar Seluruh Project</h2></div>
+        <div class="top-actions"><button class="btn btn-dark" onclick="goPage('addproject')">+ Project Baru</button></div>
+      </div>
+      <div style="overflow-x:auto;">
+      <table class="data-tbl" id="projTable">
+        <thead><tr><th>No Project</th><th>Nama Project</th><th>Line</th><th>PIC</th><th>Start</th><th>Target</th><th>Tahap</th><th>Progress</th><th>Status</th></tr></thead>
+        <tbody id="projTableBody"></tbody>
+      </table>
+      </div>
+    </section>
+
+    <!-- ADD PROJECT -->
+    <section class="page" id="page-addproject">
+      <div class="topbar"><div><div class="eyebrow">Master Project</div><h2>Tambah Project Baru</h2></div></div>
+      <div class="section-card">
+        <div class="form-grid">
+          <div class="f-field"><label>No Project</label><input id="npNo" placeholder="2026-PSP-0XX / NO-BUDGET"></div>
+          <div class="f-field"><label>Nama Project</label><input id="npName" placeholder="Automation ..."></div>
+          <div class="f-field"><label>Line / Plant</label><input id="npLine" placeholder="C/S Fact 3, Karawang, dll"></div>
+          <div class="f-field"><label>Kategori Benefit</label>
+            <select id="npCat"><option>Reduce MP</option><option>Capacity Up</option><option>Quality Up</option><option>OEE Up</option><option>New Model</option></select>
+          </div>
+          <div class="f-field"><label>PIC Utama</label><select id="npPic"></select></div>
+          <div class="f-field"><label>Support</label><select id="npSupport"></select></div>
+          <div class="f-field"><label>Tanggal Start</label><input type="date" id="npStart"></div>
+          <div class="f-field"><label>Target Selesai</label><input type="date" id="npTarget"></div>
+          <div class="f-field full"><label>Catatan Awal (opsional)</label><textarea id="npNote" placeholder="Latar belakang / tujuan project..."></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-outline" onclick="resetProjectForm()">Reset</button>
+          <button class="btn btn-dark" id="npSaveBtn" onclick="saveNewProject()">Simpan Project</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- DAILY UPDATE -->
+    <section class="page" id="page-daily">
+      <div class="topbar"><div><div class="eyebrow">Genba Report</div><h2>Update Harian</h2></div></div>
+      <div class="section-card">
+        <h4>Isi Progress Hari Ini</h4>
+        <div class="form-grid">
+          <div class="f-field"><label>Project</label><select id="duProject"></select></div>
+          <div class="f-field"><label>Tanggal</label><input type="date" id="duDate"></div>
+          <div class="f-field"><label>Engineer</label><select id="duEngineer"></select></div>
+          <div class="f-field"><label>Tahapan Saat Ini</label><select id="duStage"></select></div>
+          <div class="f-field full"><label>Plan Hari Ini</label><textarea id="duPlan" placeholder="Rencana kerja hari ini..."></textarea></div>
+          <div class="f-field full"><label>Actual / Progress</label><textarea id="duActual" placeholder="Realisasi & progress yang dicapai..."></textarea></div>
+          <div class="f-field full"><label>Problem / Kendala</label><textarea id="duProblem" placeholder="Kendala yang dihadapi (kosongkan bila tidak ada)..."></textarea></div>
+          <div class="f-field full"><label>Next Action</label><textarea id="duNext" placeholder="Rencana tindak lanjut..."></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-outline" onclick="resetDailyForm()">Reset</button>
+          <button class="btn btn-dark" id="duSaveBtn" onclick="saveDailyUpdate()">Submit Update</button>
+        </div>
+      </div>
+      <div class="section-card">
+        <h4>Riwayat Update Terbaru</h4>
+        <div class="log-list" id="dailyLogList"></div>
+      </div>
+    </section>
+
+    <!-- WEEKLY -->
+    <section class="page" id="page-weekly">
+      <div class="topbar"><div><div class="eyebrow">Review Mingguan</div><h2>Weekly Dashboard</h2></div></div>
+      <div class="summary-grid" id="weeklySummary"></div>
+      <div class="section-card">
+        <h4>Status Project Minggu Ini</h4>
+        <div class="donut-wrap">
+          <svg width="150" height="150" viewBox="0 0 42 42" id="weeklyDonut" style="flex-shrink:0;"></svg>
+          <div style="flex:1;" id="weeklyLegend"></div>
+        </div>
+      </div>
+      <div class="section-card">
+        <h4>Update 7 Hari Terakhir per Project</h4>
+        <div id="weeklyByProject"></div>
+      </div>
+    </section>
+
+    <!-- MONTHLY -->
+    <section class="page" id="page-monthly">
+      <div class="topbar"><div><div class="eyebrow">Review Bulanan</div><h2>Monthly Report</h2></div></div>
+      <div class="summary-grid" id="monthlySummary"></div>
+      <div class="section-card">
+        <h4>Progress Tahapan Seluruh Project — Bulan Berjalan</h4>
+        <div style="overflow-x:auto;">
+        <table class="data-tbl">
+          <thead><tr><th>No Project</th><th>Nama</th><th>Tahap Awal Bulan*</th><th>Tahap Saat Ini</th><th>Δ Tahapan</th><th>Update Tercatat</th></tr></thead>
+          <tbody id="monthlyTableBody"></tbody>
+        </table>
+        </div>
+        <p style="font-size:11px; color:var(--mute); margin-top:10px;">*Estimasi berdasarkan riwayat update bulan berjalan.</p>
+      </div>
+    </section>
+
+    <!-- TEAM -->
+    <section class="page" id="page-team">
+      <div class="topbar"><div><div class="eyebrow">Struktur Organisasi</div><h2>Tim Plant & Special Project</h2></div></div>
+      <div class="proj-grid" id="teamGrid"></div>
+    </section>
+
+    <!-- NON-PROJECT SUPPORT: KOMARIGOTO & PICA -->
+    <section class="page" id="page-support">
+      <div class="topbar">
+        <div><div class="eyebrow">Job Loading di Luar Project Automasi</div><h2>Support Komarigoto & PICA</h2></div>
+      </div>
+      <div class="summary-grid" id="supportSummary"></div>
+      <div class="section-card">
+        <h4>Catatan Beban Kerja</h4>
+        <p style="font-size:12.5px; color:var(--mute); line-height:1.6;">Waktu untuk Trouble & Komarigoto dibatasi maksimal <b style="color:var(--ink2);">10%</b> dari total kapasitas tim. Jika melebihi, akan mengganggu progress project automasi yang sedang berjalan.</p>
+      </div>
+      <div class="section-card">
+        <h4>Input Job Non-Project</h4>
+        <div class="form-grid">
+          <div class="f-field"><label>Tanggal</label><input type="date" id="sjDate"></div>
+          <div class="f-field"><label>Jenis</label>
+            <select id="sjType"><option>Komarigoto</option><option>PICA</option><option>Trouble Mesin</option><option>Support Produksi</option><option>Lainnya</option></select>
+          </div>
+          <div class="f-field"><label>Line / Area</label><input id="sjLine" placeholder="mis. Cam Grinding Line-7"></div>
+          <div class="f-field"><label>PIC</label><select id="sjPic"></select></div>
+          <div class="f-field"><label>Man-Day Terpakai</label><input type="number" id="sjManDay" min="0.5" step="0.5" placeholder="mis. 1.5"></div>
+          <div class="f-field full"><label>Deskripsi Kejadian / Penanganan</label><textarea id="sjDesc" placeholder="Uraikan masalah dan tindakan yang dilakukan..."></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-outline" onclick="resetSupportForm()">Reset</button>
+          <button class="btn btn-dark" id="sjSaveBtn" onclick="saveSupportJob()">Simpan</button>
+        </div>
+      </div>
+      <div class="section-card">
+        <h4>Riwayat Job Non-Project</h4>
+        <div style="overflow-x:auto;">
+        <table class="data-tbl">
+          <thead><tr><th>Tanggal</th><th>Jenis</th><th>Line/Area</th><th>PIC</th><th>Man-Day</th><th>Deskripsi</th></tr></thead>
+          <tbody id="supportTableBody"></tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- GLOBAL SUPPORT MUSASHI GROUP -->
+    <section class="page" id="page-global">
+      <div class="topbar">
+        <div><div class="eyebrow">Job Loading Tambahan</div><h2>Support ke Musashi Group Dunia</h2></div>
+        <div class="top-actions"><button class="btn btn-dark" onclick="openGlobalForm()">+ Item Support</button></div>
+      </div>
+      <div class="section-card" style="background:linear-gradient(135deg,#16223F,#1E2C52); color:#fff; border:none;">
+        <div style="font-size:12.5px; color:#B7C1E6; line-height:1.7;">Selain menangani project di Cikarang & Karawang, tim PSP juga mendukung kebutuhan design, drawing, meeting, trial, FAT/SAT, dan after-sales support untuk plant Musashi Group di berbagai negara.</div>
+      </div>
+      <div class="section-card" id="globalFormCard" style="display:none;">
+        <h4>Tambah Item Support Global</h4>
+        <div class="form-grid">
+          <div class="f-field"><label>Negara / Plant</label><input id="gsCountry" placeholder="mis. Musashi Vietnam"></div>
+          <div class="f-field"><label>Flag Emoji</label><input id="gsFlag" placeholder="🇻🇳" maxlength="4"></div>
+          <div class="f-field"><label>PIC</label><select id="gsPic"></select></div>
+          <div class="f-field"><label>Status</label><select id="gsStatus"><option>OPEN</option><option>ON PROGRESS</option><option>CLOSE</option></select></div>
+          <div class="f-field full"><label>Item Support</label><textarea id="gsItem" placeholder="mis. PO 2 Mesin Gear Checker"></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-outline" onclick="document.getElementById('globalFormCard').style.display='none';">Batal</button>
+          <button class="btn btn-dark" id="gsSaveBtn" onclick="saveGlobalItem()">Simpan</button>
+        </div>
+      </div>
+      <div class="proj-grid" id="globalGrid"></div>
+    </section>
+
+  </div>
+</div>
+</div>
+
+<!-- PROJECT DETAIL MODAL -->
+<div class="overlay" id="detailOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <div class="proj-code mono" id="mdCode"></div>
+        <h3 id="mdName"></h3>
+      </div>
+      <button class="close-btn" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-grid">
+        <div class="info-box"><div class="k">PIC / Support</div><div class="v" id="mdPic"></div></div>
+        <div class="info-box"><div class="k">Line</div><div class="v" id="mdLine"></div></div>
+        <div class="info-box"><div class="k">Start → Target</div><div class="v" id="mdDates"></div></div>
+        <div class="info-box"><div class="k">Status</div><div class="v" id="mdStatus"></div></div>
+      </div>
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="tahap" onclick="switchTab('tahap')">Tahapan Project</button>
+        <button class="tab-btn" data-tab="riwayat" onclick="switchTab('riwayat')">Riwayat Update</button>
+        <button class="tab-btn" data-tab="quick" onclick="switchTab('quick')">Update Cepat</button>
+      </div>
+      <div class="tab-pane active" id="tab-tahap"></div>
+      <div class="tab-pane" id="tab-riwayat"></div>
+      <div class="tab-pane" id="tab-quick">
+        <div class="form-grid">
+          <div class="f-field"><label>Tanggal</label><input type="date" id="qDate"></div>
+          <div class="f-field"><label>Engineer</label><select id="qEngineer"></select></div>
+          <div class="f-field full"><label>Plan</label><textarea id="qPlan"></textarea></div>
+          <div class="f-field full"><label>Actual</label><textarea id="qActual"></textarea></div>
+          <div class="f-field full"><label>Problem</label><textarea id="qProblem"></textarea></div>
+          <div class="f-field full"><label>Next Action</label><textarea id="qNext"></textarea></div>
+        </div>
+        <div class="form-actions"><button class="btn btn-dark" id="qSaveBtn" onclick="saveQuickUpdate()">Simpan Update</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     KONFIGURASI: isi PSP_API_URL di js/app.js dengan URL Web App
+     Apps Script Anda (.../exec) setelah backend di-deploy.
+     ============================================================ -->
+<script src="js/app.js"></script>
+</body>
+</html>
