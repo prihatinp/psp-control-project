@@ -3,7 +3,7 @@
 // Dapatkan URL ini setelah men-deploy backend (folder /backend) sebagai
 // Web App dari script.google.com (lihat README.md).
 // =====================================================================
-const PSP_API_URL = "https://script.google.com/macros/s/AKfycbwV3puwMIn-1yk13ad3V-FGzQLpkAc-k7fhjTHq1MZlD05aoGUGU7pL4e8Na9YqA9CAAQ/exec";
+const PSP_API_URL = "PASTE_URL_WEB_APP_APPS_SCRIPT_DI_SINI";
 
 /* ============================================================
  *  PSP PROJECT CONTROL — CLIENT
