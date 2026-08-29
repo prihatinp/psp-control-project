@@ -21,7 +21,7 @@ const assert = require('assert');
 const { createMockGasContext } = require('./mock-gas-v2');
 
 const PROD_DIR = path.join(__dirname, '..');
-const LOAD_ORDER = ['Code.gs', 'ProjectMaster.gs', 'WbsWorkload.gs', 'Organization.gs'];
+const LOAD_ORDER = ['Code.gs', 'ProjectMaster.gs', 'WbsWorkload.gs', 'Organization.gs', 'Reporting.gs'];
 
 const mockGlobals = createMockGasContext({ SS_ID: 'mock-ss', HMAC_SECRET: 'test-secret' });
 const context = vm.createContext(mockGlobals);
