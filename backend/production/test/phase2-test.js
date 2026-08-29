@@ -20,7 +20,7 @@ const PROD_DIR = path.join(__dirname, '..');
 // setupResourceAllocationSheet_/ensurePhase3Config_ (all .gs files share one
 // global scope in the real Apps Script project, so this is only a loading
 // concern for this standalone test file, not a real dependency problem).
-const LOAD_ORDER = ['Code.gs', 'ProjectMaster.gs', 'WbsWorkload.gs'];
+const LOAD_ORDER = ['Code.gs', 'ProjectMaster.gs', 'WbsWorkload.gs', 'Organization.gs'];
 
 function freshContext() {
   const mockGlobals = createMockGasContext({ SS_ID: 'mock-ss', HMAC_SECRET: 'test-secret-do-not-use-in-prod' });
