@@ -1,9 +1,23 @@
-# PSP Project Control — Backend (Phase 1 Foundation)
+# PSP Project Control — Backend
 
-This folder is new. Nothing under `index.html`, `css/`, `js/`, or `img/` at the
-repo root was touched — the existing frontend keeps calling whatever
-Apps Script Web App URL is already configured in `js/app.js` until a
-deliberate, approved cutover happens.
+## Folder status (read this first)
+
+| Folder | Status | Use it for |
+|---|---|---|
+| `backend/legacy/` | **Authoritative reference.** A pristine, unmodified copy of the real production `Code.gs`, as supplied directly by the project owner. Never edit this file — it exists so every later change can be diffed against real ground truth. | Confirming what the live system actually does. |
+| `backend/production/` | **Current Phase 2 deployable extension.** `Code.gs` here = the file above + 3 additive edits (documented inline with `Phase 2 addition` comments); `ProjectMaster.gs` is new. This is what should eventually be pasted into the real Apps Script project, replacing its `Code.gs` and adding `ProjectMaster.gs` as a new file — **not yet done**, pending your review. | The next real deployment. |
+| `backend/gas/` | **Superseded scaffold from Phase 1.** Written *before* the real legacy source was available, on assumptions later proven wrong (see the Phase 1.5 audit) — different PIN model, no `LockService`, wrong ID format, wrong Script Property names. Kept only for history; do not deploy it, do not treat it as a basis for new work. | Nothing — historical record only. |
+
+Nothing under `index.html`, `css/`, `js/`, or `img/` at the repo root was
+touched by Phase 1; Phase 2 makes small, additive, documented edits to
+`index.html` and `js/app.js` (new nav items/pages/functions only — every
+existing element, function, and API call is unchanged). The frontend
+keeps calling whatever Apps Script Web App URL is already configured in
+`js/app.js`'s `PSP_API_URL`.
+
+---
+
+# Phase 1 Foundation — original notes below (superseded by the above table for anything about `backend/gas/`)
 
 ## What this is
 
