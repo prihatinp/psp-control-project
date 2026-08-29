@@ -30,12 +30,42 @@ var PROJECT_MASTER_HEADERS = [
   'Status', 'IntakeDate', 'TargetDate', 'FiscalYear',
   'RfqNo', 'RfqDate', 'QuotationStatus', 'QuotationDate', 'NegotiationStatus', 'PoNo', 'PoDate',
   'PIC', 'Note', 'CreatedBy', 'CreatedAt', 'UpdatedAt',
-  'LegacyProjectId'
+  'LegacyProjectId',
+  'Country' // Phase 5.1 addition — see below. Appended last (same reasoning as
+            // LegacyProjectId) so every existing index-based access stays valid.
 ];
 
 function setupProjectMasterSheet_() {
   var sh = getSheet_(SHEET_NAMES.PROJECT_MASTER);
   ensureHeader_(sh, PROJECT_MASTER_HEADERS);
+  ensureProjectMasterCountryColumn_();
+}
+
+/**
+ * Phase 5.1 — Customer / Country / Plant data model fix.
+ *
+ * Audit finding: PROJECT_MASTER already had separate Customer and Plant
+ * columns, but no Country column at all, and the External "Add New" form
+ * only ever collected one free-text field ("Customer / Plant", e.g.
+ * "Musashi Vietnam") into `Customer`. Reporting.gs's groupedBy.country then
+ * grouped by that same Customer value, so "country" in every report was
+ * really "customer" (or a customer+plant string) in disguise — exactly the
+ * concept-mixing this phase was asked to find and fix.
+ *
+ * Fix (additive, no data invented): add a genuine Country column. On an
+ * already-provisioned real sheet, ensureHeader_() above is a no-op (it only
+ * writes headers to a completely empty row 1), so this function appends
+ * the column explicitly if it is missing — existing rows simply get a
+ * blank Country cell, never a guessed value. Existing Customer/Plant data
+ * is untouched.
+ */
+function ensureProjectMasterCountryColumn_() {
+  var sh = getSheet_(SHEET_NAMES.PROJECT_MASTER);
+  var lastCol = sh.getLastColumn();
+  var headerRow = lastCol > 0 ? sh.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  if (headerRow.indexOf('Country') === -1) {
+    sh.getRange(1, lastCol + 1).setValue('Country');
+  }
 }
 
 /**
@@ -76,6 +106,7 @@ function validateProjectStatus_(type, status) {
 function projectMasterRowToObj_(p) {
   return {
     id: p.ID, type: p.Type, no: p.No, name: p.Name, customer: p.Customer, plant: p.Plant,
+    country: p.Country || '', // Phase 5.1 — real, separate field; '' means not yet entered, never guessed
     category: p.Category, priority: p.Priority, complexity: p.Complexity, status: p.Status,
     intakeDate: fmtDateCell_(p.IntakeDate), targetDate: fmtDateCell_(p.TargetDate), fiscalYear: p.FiscalYear,
     rfqNo: p.RfqNo, rfqDate: fmtDateCell_(p.RfqDate), quotationStatus: p.QuotationStatus,
@@ -108,7 +139,7 @@ function handleAddProjectMaster_(body, auth) {
     var sh = getSheet_(SHEET_NAMES.PROJECT_MASTER);
     var id = newId_('pm');
     var clean = sanitizeObjStrings_(body, [
-      'no', 'name', 'customer', 'plant', 'category', 'priority', 'complexity',
+      'no', 'name', 'customer', 'plant', 'country', 'category', 'priority', 'complexity',
       'rfqNo', 'quotationStatus', 'negotiationStatus', 'poNo', 'pic', 'note'
     ]);
     var intakeDate = body.intakeDate || todayStr_();
@@ -121,7 +152,8 @@ function handleAddProjectMaster_(body, auth) {
       clean.rfqNo || '', body.rfqDate || '', clean.quotationStatus || '', body.quotationDate || '',
       clean.negotiationStatus || '', clean.poNo || '', body.poDate || '',
       clean.pic, clean.note || '', auth.n, nowIso, nowIso,
-      '' // LegacyProjectId — blank for genuinely new projects; only set by migration
+      '', // LegacyProjectId — blank for genuinely new projects; only set by migration
+      clean.country || '' // Phase 5.1 — separate, optional, never inferred from customer/plant
     ];
     sh.appendRow(row);
     var obj = {};
@@ -152,11 +184,11 @@ function handleUpdateProjectMaster_(body, auth) {
     }
 
     var clean = sanitizeObjStrings_(body, [
-      'no', 'name', 'customer', 'plant', 'category', 'priority', 'complexity',
+      'no', 'name', 'customer', 'plant', 'country', 'category', 'priority', 'complexity',
       'rfqNo', 'quotationStatus', 'negotiationStatus', 'poNo', 'pic', 'note'
     ]);
     var fieldMap = {
-      no: 'No', name: 'Name', customer: 'Customer', plant: 'Plant', category: 'Category',
+      no: 'No', name: 'Name', customer: 'Customer', plant: 'Plant', country: 'Country', category: 'Category',
       priority: 'Priority', complexity: 'Complexity', status: 'Status', targetDate: 'TargetDate',
       rfqNo: 'RfqNo', rfqDate: 'RfqDate', quotationStatus: 'QuotationStatus', quotationDate: 'QuotationDate',
       negotiationStatus: 'NegotiationStatus', poNo: 'PoNo', poDate: 'PoDate', pic: 'PIC', note: 'Note'

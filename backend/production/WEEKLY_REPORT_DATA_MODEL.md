@@ -35,10 +35,10 @@ they can never disagree with each other or with the dashboard:
 | Field | Source |
 |---|---|
 | `projectId` | `PROJECT_MASTER.ID` |
-| `customer`, `plant`, `projectNo`, `projectName`, `pic`, `status`, `targetDate` | `PROJECT_MASTER` |
+| `customer`, `country` *(Phase 5.1)*, `plant`, `projectNo`, `projectName`, `pic`, `status`, `targetDate` | `PROJECT_MASTER` |
 | `overallProgress` | average `WBS.PROGRESS` across this project's WBS rows |
 | `currentActivity` | the WBS row with `STATUS = 'ON PROGRESS'`, else the most recently created WBS row |
-| `plannedThisWeek`, `actualThisWeek`, `problem`, `nextAction` | latest legacy `DailyLogs` entry inside the reporting period (empty string if none — see "Known limitation" below) |
+| `plannedThisWeek`, `actualThisWeek`, `problem`, `nextAction` | chronologically-latest legacy `DailyLogs` entry inside the reporting period (empty string if none — see "Known limitation" below). Phase 5.1: picked by log **date**, not sheet insertion order (`latestLogInPeriod_`) — a backfilled/out-of-order entry no longer masks a genuinely later one. |
 | `scheduleStatus` | softened from `health`: `RED` -> `DELAYED`, `ORANGE` -> `AT RISK`, else `ON TRACK` |
 | `riskLevel` | from the Project Risk Engine — **internal only** |
 | `manDayPlanned`, `manDayActual` | sum of `RESOURCE_ALLOCATION.planManDay` / `.actualManDay` across this project's WBS — **internal only** |
@@ -54,15 +54,18 @@ they can never disagree with each other or with the dashboard:
   (internal capacity/costing data, never a customer's business).
 - **kept, already softened**: `scheduleStatus` — the customer sees
   ON TRACK / AT RISK / DELAYED, never the internal `riskLevel` string.
-- every other field (`customer`, `plant`, `projectNo`, `projectName`, `pic`,
-  `status`, `overallProgress`, `currentActivity`, `plannedThisWeek`,
-  `actualThisWeek`, `problem`, `nextAction`, `targetDate`, `remarks`) is
-  identical between the two rows.
+- every other field (`customer`, `country`, `plant`, `projectNo`,
+  `projectName`, `pic`, `status`, `overallProgress`, `currentActivity`,
+  `plannedThisWeek`, `actualThisWeek`, `problem`, `nextAction`,
+  `targetDate`, `remarks`) is identical between the two rows — `country`
+  (Phase 5.1) is a plain descriptive field like `customer`/`plant`, not
+  sensitive, so it is not excluded.
 
 This inclusion/exclusion list must stay in sync with
 `handleGetExternalWeeklyReport_` in `Reporting.gs` — if a field is ever
 added to the internal row, it defaults to **excluded** from
-`customerFacing` unless explicitly added to both.
+`customerFacing` unless explicitly added to both. See
+`CUSTOMER_REPORT_DATA_CONTRACT.md` for the exact, test-enforced field list.
 
 ### Summary / grouping
 
@@ -70,9 +73,14 @@ added to the internal row, it defaults to **excluded** from
 `projectOnTrack`, `projectAtRisk`, `projectDelayed` (all counted from
 `scheduleStatus`/`status`, in-scope projects only).
 
-`groupedBy`: `country` (grouped by `customer` — legacy naming carried over
-from the Phase 1 audit, no separate country field exists), `plant`,
-`status`, `pic` — each a simple count map.
+`groupedBy`: `customer`, `country`, `plant`, `status`, `pic` — each a simple
+count map. **Phase 5.1 fix**: `country` used to be an alias for grouping by
+`customer` (there was no separate Country field at all) — a real
+Customer-vs-Country mixing bug found during the Phase 5.1 audit, documented
+in `WEEKLY_UPDATE_DESIGN_REVIEW.md`. Now genuinely separate: `customer`
+groups by `PROJECT_MASTER.Customer`, `country` groups by the new
+`PROJECT_MASTER.Country` field (mostly `"Unknown"` until it is filled in —
+never backfilled or guessed for existing rows).
 
 ## Internal Weekly Report (`getInternalWeeklyReport`)
 

@@ -86,7 +86,7 @@ function buildProjectRiskContext_() {
   var projects = rawProjects.map(function (p) {
     return {
       id: p.ID, no: p.No, name: p.Name, type: p.Type, pic: p.PIC, status: p.Status,
-      customer: p.Customer, plant: p.Plant,
+      customer: p.Customer, plant: p.Plant, country: p.Country || '', // Phase 5.1: Country is its own field, never derived from customer/plant
       targetDate: fmtDateCell_(p.TargetDate), intakeDate: fmtDateCell_(p.IntakeDate),
       updatedAt: p.UpdatedAt, legacyProjectId: p.LegacyProjectId || ''
     };
@@ -126,6 +126,46 @@ function computeLastUpdateDate_(project, wbsRows, dailyLogsForProject) {
   return new Date(Math.max.apply(null, dates.map(function (d) { return d.getTime(); })));
 }
 
+/**
+ * Phase 5.1 — one short "which data drove this flag" label per reason key,
+ * shown as `source` on each risk/attention record (Part 4's audit asked
+ * for a Source field alongside Project/Risk Level/Reason/Target
+ * Date/Current Status). Purely descriptive — never used in the cascade
+ * logic itself.
+ */
+var RISK_SOURCE_MAP_ = {
+  overdue: 'PROJECT_MASTER.TargetDate',
+  critical_deadline: 'PROJECT_MASTER.TargetDate',
+  noRecentUpdate: 'PROJECT_MASTER.UpdatedAt + WBS.UPDATED_AT + legacy DailyLogs (via LegacyProjectId)',
+  noWbs: 'WBS',
+  wbsWithoutAllocation: 'WBS + RESOURCE_ALLOCATION',
+  missingManDay: 'RESOURCE_ALLOCATION.PLAN_MAN_DAY',
+  overloadedEngineer: 'RESOURCE_ALLOCATION + Engineer Loading (Phase 4)',
+  highLoadEngineer: 'RESOURCE_ALLOCATION + Engineer Loading (Phase 4)',
+  progressBehind: 'WBS.PROGRESS vs PROJECT_MASTER.IntakeDate/TargetDate',
+  poApproaching: 'PROJECT_MASTER.Status + TargetDate',
+  externalPoStale: 'PROJECT_MASTER.Status + UpdatedAt',
+  onHold: 'PROJECT_MASTER.Status',
+  missingCriticalData: 'PROJECT_MASTER.PIC/TargetDate'
+};
+/**
+ * Phase 5.1 — which reason key actually explains the assigned riskLevel,
+ * in the same priority order as the cascade's own boolean expressions
+ * below. Audit finding: before this fix, getProjectsNeedAttention_ picked
+ * reasonKeys[0] (the first flag evaluated in source order) as "the"
+ * reason/action — for a project that was e.g. both noRecentUpdate (a
+ * WATCH-tier flag, evaluated first) and overloadedEngineer (the actual
+ * AT-RISK-tier flag that determined its riskLevel), the recommended
+ * action shown could contradict the assigned risk level. These three
+ * lists mirror the cascade's own conditions exactly, so the chosen
+ * primaryReasonKey always belongs to the tier that actually won.
+ */
+var RISK_LEVEL_REASON_PRIORITY_ = {
+  CRITICAL: ['overdue', 'critical_deadline', 'overloadedEngineer', 'poApproaching'],
+  'AT RISK': ['poApproaching', 'progressBehind', 'overloadedEngineer', 'externalPoStale'],
+  WATCH: ['noRecentUpdate', 'highLoadEngineer', 'wbsWithoutAllocation', 'missingManDay', 'onHold', 'missingCriticalData', 'noWbs']
+};
+
 function computeProjectRisk_(project, wbsAll, allocAll, dailyByLegacyId, engineerStatusByName, today) {
   var staleDays = getConfigNum_('REPORTING_STALE_DAYS', 7);
   var atRiskDays = getConfigNum_('PROJECT_AT_RISK_DAYS', 14);
@@ -147,7 +187,25 @@ function computeProjectRisk_(project, wbsAll, allocAll, dailyByLegacyId, enginee
   var wbsIdsForProject = relatedWbs.map(function (w) { return w.id; });
   var allocatedWbsIds = {};
   allocAll.forEach(function (a) { allocatedWbsIds[a.wbsId] = true; });
-  var wbsWithoutAllocation = hasWbs && relatedWbs.every(function (w) { return !allocatedWbsIds[w.id]; });
+  // Phase 5.1 fix: these three are about whether *active* execution was ever
+  // properly planned/resourced — like progressBehind/poApproaching, they
+  // stop being relevant once a project is closed (COMPLETED/CANCELLED).
+  // Before this fix, an old completed project with no Phase 3/4 WBS ever
+  // created for it (true for most legacy-migrated projects, since WBS is a
+  // newer feature) would show WATCH forever, and never leave the "Projects
+  // Need Attention" list — a real bug, not an active risk.
+  var noWbs = !isClosed && !hasWbs;
+  var wbsWithoutAllocation = !isClosed && hasWbs && relatedWbs.every(function (w) { return !allocatedWbsIds[w.id]; });
+
+  // Phase 5.1: distinct from wbsWithoutAllocation — this WBS row DOES have
+  // one or more allocation rows, but they sum to zero Plan Man-Day (e.g.
+  // an engineer assigned with no effort actually planned yet).
+  var missingManDay = !isClosed && relatedWbs.some(function (w) {
+    var allocsForThisWbs = allocAll.filter(function (a) { return a.wbsId === w.id; });
+    if (!allocsForThisWbs.length) return false; // that case is wbsWithoutAllocation's job
+    var sum = allocsForThisWbs.reduce(function (s, a) { return s + (Number(a.planManDay) || 0); }, 0);
+    return sum === 0;
+  });
 
   var projectEngineers = allocAll.filter(function (a) { return wbsIdsForProject.indexOf(a.wbsId) !== -1; }).map(function (a) { return a.engineer; });
   if (project.pic) projectEngineers.push(project.pic);
@@ -169,13 +227,14 @@ function computeProjectRisk_(project, wbsAll, allocAll, dailyByLegacyId, enginee
   var onHold = project.status === 'ON HOLD';
   var missingCriticalData = !project.pic || !project.targetDate;
 
-  var reasonKeys = [], reasonText = [];
-  function flag(key, text) { reasonKeys.push(key); reasonText.push(text); }
+  var reasonKeys = [], reasonText = [], reasonTextByKey = {};
+  function flag(key, text) { reasonKeys.push(key); reasonText.push(text); reasonTextByKey[key] = text; }
   if (overdue) flag('overdue', 'Target date terlewati, status belum COMPLETED');
   if (criticalDeadline) flag('critical_deadline', 'Target date dalam ' + daysUntilTarget + ' hari');
   if (noRecentUpdate) flag('noRecentUpdate', 'Tidak ada update dalam lebih dari ' + staleDays + ' hari');
-  if (!hasWbs) flag('noWbs', 'Belum ada WBS untuk project ini');
+  if (noWbs) flag('noWbs', 'Belum ada WBS untuk project ini');
   if (wbsWithoutAllocation) flag('wbsWithoutAllocation', 'WBS ada tapi belum ada alokasi resource');
+  if (missingManDay) flag('missingManDay', 'Ada alokasi resource dengan Plan Man-Day = 0');
   if (overloadedEngineer) flag('overloadedEngineer', 'Engineer pada project ini berstatus OVERLOAD');
   if (highLoadEngineer) flag('highLoadEngineer', 'Engineer pada project ini berstatus HIGH LOAD');
   if (progressBehind) flag('progressBehind', 'Progress tertinggal dari jadwal (' + Math.round(avgProgress) + '% vs ekspektasi ' + Math.round(expectedProgress) + '%)');
@@ -188,9 +247,18 @@ function computeProjectRisk_(project, wbsAll, allocAll, dailyByLegacyId, enginee
   var level = 'NORMAL';
   if (overdue || criticalDeadline || (overloadedEngineer && poApproaching)) level = 'CRITICAL';
   else if (poApproaching || progressBehind || overloadedEngineer || externalPoStale) level = 'AT RISK';
-  else if (noRecentUpdate || highLoadEngineer || wbsWithoutAllocation || onHold || missingCriticalData || !hasWbs) level = 'WATCH';
+  else if (noRecentUpdate || highLoadEngineer || wbsWithoutAllocation || missingManDay || onHold || missingCriticalData || noWbs) level = 'WATCH';
 
   var health = onHold ? 'GRAY' : (level === 'CRITICAL' ? 'RED' : level === 'AT RISK' ? 'ORANGE' : level === 'WATCH' ? 'YELLOW' : 'GREEN');
+
+  // Phase 5.1: pick the ONE reason that actually explains `level`, using the
+  // same priority order as the cascade above (not just "first flag evaluated").
+  var priorityForLevel = RISK_LEVEL_REASON_PRIORITY_[level] || [];
+  var primaryReasonKey = null;
+  for (var i = 0; i < priorityForLevel.length; i++) {
+    if (reasonKeys.indexOf(priorityForLevel[i]) !== -1) { primaryReasonKey = priorityForLevel[i]; break; }
+  }
+  if (!primaryReasonKey && reasonKeys.length) primaryReasonKey = reasonKeys[0];
 
   return {
     projectId: project.id, projectNo: project.no, projectName: project.name, type: project.type, pic: project.pic,
@@ -198,7 +266,15 @@ function computeProjectRisk_(project, wbsAll, allocAll, dailyByLegacyId, enginee
     lastUpdate: lastUpdate ? dateOnly_(lastUpdate) : null,
     daysUntilTarget: daysUntilTarget, avgProgress: avgProgress === null ? null : Math.round(avgProgress),
     riskLevel: level, riskReasons: reasonText, reasonKeys: reasonKeys, health: health,
-    flags: { overdue: !!overdue, nearTarget: !!nearTarget, noRecentUpdate: !!noRecentUpdate, externalPoStale: !!externalPoStale }
+    // Phase 5.1 additions — additive only, every field above is unchanged.
+    primaryReasonKey: primaryReasonKey,
+    primaryReason: primaryReasonKey ? reasonTextByKey[primaryReasonKey] : null,
+    primarySource: primaryReasonKey ? RISK_SOURCE_MAP_[primaryReasonKey] : null,
+    sources: reasonKeys.map(function (k) { return RISK_SOURCE_MAP_[k]; }),
+    flags: {
+      overdue: !!overdue, nearTarget: !!nearTarget, noRecentUpdate: !!noRecentUpdate,
+      externalPoStale: !!externalPoStale, missingManDay: !!missingManDay
+    }
   };
 }
 
@@ -230,7 +306,8 @@ var ATTENTION_ACTION_MAP_ = {
   poApproaching: 'Konfirmasi jadwal dengan customer, pastikan kesiapan',
   externalPoStale: 'Siapkan & kirim update progress ke customer',
   onHold: 'Review alasan ON HOLD, tentukan tindak lanjut',
-  missingCriticalData: 'Lengkapi data PIC / Target Date project'
+  missingCriticalData: 'Lengkapi data PIC / Target Date project',
+  missingManDay: 'Isi Plan Man-Day pada alokasi resource yang sudah ada'
 };
 function handleGetProjectsNeedAttention_(body) {
   var risksRes = handleGetProjectRisks_(body);
@@ -238,10 +315,14 @@ function handleGetProjectsNeedAttention_(body) {
   var attention = risksRes.risks.filter(function (r) { return r.riskLevel !== 'NORMAL'; });
   attention.sort(function (a, b) { return order[a.riskLevel] - order[b.riskLevel]; });
   var withActions = attention.map(function (r, idx) {
+    // Phase 5.1 fix: the action must match the reason that actually
+    // determined riskLevel (primaryReasonKey), not just whichever flag was
+    // evaluated first (reasonKeys[0]) — see RISK_LEVEL_REASON_PRIORITY_.
     return {
       priority: idx + 1, projectId: r.projectId, projectNo: r.projectNo, projectName: r.projectName, pic: r.pic,
       reason: r.riskReasons.join('; '), target: r.targetDate, status: r.status, riskLevel: r.riskLevel,
-      recommendedAction: r.reasonKeys.length ? (ATTENTION_ACTION_MAP_[r.reasonKeys[0]] || 'Review project ini') : 'Review project ini'
+      primaryReason: r.primaryReason, source: r.primarySource,
+      recommendedAction: r.primaryReasonKey ? (ATTENTION_ACTION_MAP_[r.primaryReasonKey] || 'Review project ini') : 'Review project ini'
     };
   });
   return { ok: true, projects: withActions };
@@ -254,6 +335,19 @@ function handleGetProjectsNeedAttention_(body) {
  *  WEEKLY_REPORT_DATA_MODEL.md for the exact field-by-field
  *  inclusion/exclusion list and why).
  * ============================================================ */
+/**
+ * Phase 5.1 fix: pick the chronologically-latest log inside the period,
+ * not just the last one in sheet insertion order. DailyLogs rows are
+ * appended in whatever order they were entered — for normal same-day
+ * entry that matches chronological order, but a backfilled/out-of-order
+ * entry would otherwise silently make an older log look "latest".
+ */
+function latestLogInPeriod_(logs, period) {
+  var inPeriod = logs.filter(function (l) { var d = parseDate_(l.date); return d && d >= period.startDate && d <= period.endDate; });
+  inPeriod.sort(function (a, b) { return parseDate_(a.date) - parseDate_(b.date); });
+  return inPeriod.length ? inPeriod[inPeriod.length - 1] : null;
+}
+
 function handleGetExternalWeeklyReport_(body) {
   var period = parseReportingPeriod_(body);
   var ctx = buildProjectRiskContext_();
@@ -273,13 +367,12 @@ function handleGetExternalWeeklyReport_(body) {
     var planMd = allocForProject.reduce(function (s, a) { return s + a.planManDay; }, 0);
     var actualMd = allocForProject.reduce(function (s, a) { return s + a.actualManDay; }, 0);
     var logs = p.legacyProjectId ? (ctx.dailyByLegacyId[p.legacyProjectId] || []) : [];
-    var logsInPeriod = logs.filter(function (l) { var d = parseDate_(l.date); return d && d >= period.startDate && d <= period.endDate; });
-    var latestLog = logsInPeriod.length ? logsInPeriod[logsInPeriod.length - 1] : null;
+    var latestLog = latestLogInPeriod_(logs, period);
     var avgProgress = wbsForProject.length ? Math.round(wbsForProject.reduce(function (s, w) { return s + (Number(w.progress) || 0); }, 0) / wbsForProject.length) : 0;
     var scheduleStatus = risk.health === 'RED' ? 'DELAYED' : (risk.health === 'ORANGE' ? 'AT RISK' : 'ON TRACK');
 
     var internalRow = {
-      projectId: p.id, customer: p.customer, plant: p.plant, projectNo: p.no, projectName: p.name,
+      projectId: p.id, customer: p.customer, country: p.country, plant: p.plant, projectNo: p.no, projectName: p.name,
       pic: p.pic, status: p.status, overallProgress: avgProgress,
       currentActivity: currentActivity ? currentActivity.name : '',
       plannedThisWeek: latestLog ? latestLog.plan : '', actualThisWeek: latestLog ? latestLog.actual : '',
@@ -289,9 +382,13 @@ function handleGetExternalWeeklyReport_(body) {
     };
     // CUSTOMER-FACING: excludes projectId, manDayPlanned/manDayActual (internal
     // capacity data), and riskLevel (internal classification) — see
-    // WEEKLY_REPORT_DATA_MODEL.md. scheduleStatus is already the softened label.
+    // WEEKLY_REPORT_DATA_MODEL.md and CUSTOMER_REPORT_DATA_CONTRACT.md.
+    // Customer/Country/Plant are plain descriptive fields, not sensitive —
+    // all three stay in the customer-facing row (Phase 5.1: Country is now
+    // its own field, never derived from Customer/Plant — see
+    // PHASE5.1_CALIBRATION_REPORT.md / ProjectMaster.gs).
     var customerFacingRow = {
-      customer: p.customer, plant: p.plant, projectNo: p.no, projectName: p.name, pic: p.pic,
+      customer: p.customer, country: p.country, plant: p.plant, projectNo: p.no, projectName: p.name, pic: p.pic,
       status: p.status, overallProgress: avgProgress, currentActivity: internalRow.currentActivity,
       plannedThisWeek: internalRow.plannedThisWeek, actualThisWeek: internalRow.actualThisWeek,
       problem: internalRow.problem, nextAction: internalRow.nextAction,
@@ -315,8 +412,14 @@ function handleGetExternalWeeklyReport_(body) {
     rows.forEach(function (r) { var k = keyFn(r.internal) || 'Unknown'; out[k] = (out[k] || 0) + 1; });
     return out;
   }
+  // Phase 5.1 fix: `country` used to be an alias for grouping by `customer`
+  // (a real bug — see PHASE5.1_CALIBRATION_REPORT.md). Now genuinely
+  // separate: `customer` groups by Customer, `country` groups by the real
+  // Country field (mostly "Unknown" until it is filled in going forward —
+  // never backfilled/guessed for existing rows).
   var groupedBy = {
-    country: groupCount(function (r) { return r.customer; }),
+    customer: groupCount(function (r) { return r.customer; }),
+    country: groupCount(function (r) { return r.country; }),
     plant: groupCount(function (r) { return r.plant; }),
     status: groupCount(function (r) { return r.status; }),
     pic: groupCount(function (r) { return r.pic; })
@@ -346,8 +449,7 @@ function handleGetInternalWeeklyReport_(body) {
     var planMd = allocForProject.reduce(function (s, a) { return s + a.planManDay; }, 0);
     var actualMd = allocForProject.reduce(function (s, a) { return s + a.actualManDay; }, 0);
     var logs = p.legacyProjectId ? (ctx.dailyByLegacyId[p.legacyProjectId] || []) : [];
-    var logsInPeriod = logs.filter(function (l) { var d = parseDate_(l.date); return d && d >= period.startDate && d <= period.endDate; });
-    var latestLog = logsInPeriod.length ? logsInPeriod[logsInPeriod.length - 1] : null;
+    var latestLog = latestLogInPeriod_(logs, period);
     var avgProgress = wbsForProject.length ? Math.round(wbsForProject.reduce(function (s, w) { return s + (Number(w.progress) || 0); }, 0) / wbsForProject.length) : 0;
     var picLoading = ctx.engineerLoadingFull.engineers.filter(function (e) { return e.engineer === p.pic; })[0] || null;
 
@@ -443,11 +545,17 @@ function handleGetExecutiveDashboard_(body) {
   // collision flagged in the Phase 1.5 audit. Both are reported, clearly
   // separated. See PHASE5_REPORTING_MODEL.md.
   var externalProjects = ctx.projects.filter(function (p) { return p.type === 'EXTERNAL'; });
-  var byCustomer = {};
-  externalProjects.forEach(function (p) { var k = p.customer || 'Unknown'; byCustomer[k] = (byCustomer[k] || 0) + 1; });
+  var byCustomer = {}, byCountry = {};
+  externalProjects.forEach(function (p) {
+    var k = p.customer || 'Unknown'; byCustomer[k] = (byCustomer[k] || 0) + 1;
+    // Phase 5.1: genuinely grouped by the Country field now, not Customer — see
+    // PHASE5.1_CALIBRATION_REPORT.md. "Unknown" until Country is filled in.
+    var c = p.country || 'Unknown'; byCountry[c] = (byCountry[c] || 0) + 1;
+  });
   var globalSupport = {
     activeExternal: externalProjects.filter(function (p) { return p.status !== 'COMPLETED' && p.status !== 'CANCELLED'; }).length,
     byCustomer: Object.keys(byCustomer).map(function (k) { return { customer: k, count: byCustomer[k] }; }),
+    byCountry: Object.keys(byCountry).map(function (k) { return { country: k, count: byCountry[k] }; }),
     po: externalProjects.filter(function (p) { return p.status === 'PO'; }).length,
     rfq: externalProjects.filter(function (p) { return p.status === 'RFQ'; }).length,
     execution: externalProjects.filter(function (p) { return p.status === 'EXECUTION'; }).length,
@@ -456,6 +564,17 @@ function handleGetExecutiveDashboard_(body) {
   var legacyGlobalSupportRows = rowsToObjects_(getSheet_(SHEET_NAMES.GLOBAL));
   var legacyByStatus = {};
   legacyGlobalSupportRows.forEach(function (g) { legacyByStatus[g.Status] = (legacyByStatus[g.Status] || 0) + 1; });
+
+  // Phase 5.1, Part 10: surface the existing (Phase 3.1) Data Quality Report
+  // on the dashboard, read-only — this never modifies source data, it only
+  // reports the count getDataQualityReport already computes. Status is a
+  // plain, documented rule: any issue at all -> WARNING, otherwise OK.
+  var dq = handleGetDataQualityReport_();
+  var dataQuality = {
+    status: dq.totalIssues > 0 ? 'WARNING' : 'OK',
+    totalIssues: dq.totalIssues,
+    bySeverity: dq.bySeverity
+  };
 
   return {
     ok: true,
@@ -469,6 +588,7 @@ function handleGetExecutiveDashboard_(body) {
       byStatus: legacyByStatus, total: legacyGlobalSupportRows.length
     },
     irregularJobsTotal: rowsToObjects_(getSheet_(SHEET_NAMES.SUPPORT)).length,
+    dataQuality: dataQuality,
     risks: risks
   };
 }
@@ -488,6 +608,7 @@ function handleGetReportingPreview_(body) {
     summary: { portfolio: dashboard.summary.portfolio, progress: dashboard.summary.progress, external: external.summary },
     manpower: dashboard.manpower,
     workload: dashboard.workload,
+    dataQuality: dashboard.dataQuality,
     externalReportSummary: external.summary,
     internalReportSummary: { totalProjects: internalReport.projects.length, irregularJobs: internalReport.irregularJobs },
     attention: attention.projects.slice(0, 10)
