@@ -2,8 +2,17 @@
 // KONFIGURASI: ganti dengan URL Web App Apps Script Anda (.../exec)
 // Dapatkan URL ini setelah men-deploy backend (folder /backend) sebagai
 // Web App dari script.google.com (lihat README.md).
+//
+// Staging override (Phase 5.5): a browser can temporarily point this
+// page at a staging Web App URL without ever committing that URL here,
+// via localStorage — see backend/staging/STAGING_SETUP_CHECKLIST.md.
+//   localStorage.setItem('psp_staging_api_url', 'https://.../exec')
+//   localStorage.removeItem('psp_staging_api_url') // back to production
+// Falls back to the committed production URL below when unset, exactly
+// as before this override existed.
 // =====================================================================
-const PSP_API_URL = "https://script.google.com/macros/s/AKfycbwV3puwMIn-1yk13ad3V-FGzQLpkAc-k7fhjTHq1MZlD05aoGUGU7pL4e8Na9YqA9CAAQ/exec";
+const PSP_API_URL = (typeof localStorage !== 'undefined' && localStorage.getItem('psp_staging_api_url'))
+  || "https://script.google.com/macros/s/AKfycbwV3puwMIn-1yk13ad3V-FGzQLpkAc-k7fhjTHq1MZlD05aoGUGU7pL4e8Na9YqA9CAAQ/exec";
 
 /* ============================================================
  *  PSP PROJECT CONTROL — CLIENT
