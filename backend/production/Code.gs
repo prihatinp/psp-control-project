@@ -136,6 +136,14 @@ function doPost(e) {
       case 'getManpowerByEngineer': return jsonOut_(handleGetEngineerLoading_(body));
       case 'getManpowerScenario': return jsonOut_(handleGetManpowerScenario_(body));
       case 'getManpowerGap': return jsonOut_(handleGetManpowerAnalysis_(body));
+      // --- Phase 5 additions (Executive Dashboard + Weekly Report foundation, read-only).
+      //     Handlers live in Reporting.gs, a separate file in this same project. ---
+      case 'getExecutiveDashboard': return jsonOut_(handleGetExecutiveDashboard_(body));
+      case 'getProjectRisks': return jsonOut_(handleGetProjectRisks_(body));
+      case 'getProjectsNeedAttention': return jsonOut_(handleGetProjectsNeedAttention_(body));
+      case 'getExternalWeeklyReport': return jsonOut_(handleGetExternalWeeklyReport_(body));
+      case 'getInternalWeeklyReport': return jsonOut_(handleGetInternalWeeklyReport_(body));
+      case 'getReportingPreview': return jsonOut_(handleGetReportingPreview_(body));
       default: return jsonOut_({ ok: false, message: 'Aksi tidak dikenal.' });
     }
   } catch (err) {
@@ -314,6 +322,9 @@ function setupSpreadsheet() {
   // --- Phase 4 addition: one new sheet + config keys, appended after Phase 3's calls above ---
   setupOrgStructureSheet_();
   ensurePhase4Config_();
+  // --- Phase 5 addition: no new sheet (read-only reporting/risk engine over
+  //     existing sheets), only new Config keys, appended after Phase 4's calls above ---
+  ensurePhase5Config_();
   getSecret_(); // pastikan HMAC secret sudah dibuat
   const sh1 = ss.getSheetByName('Sheet1');
   if (sh1 && ss.getSheets().length > 1) ss.deleteSheet(sh1);
