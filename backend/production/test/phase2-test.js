@@ -16,7 +16,11 @@ const assert = require('assert');
 const { createMockGasContext } = require('./mock-gas-v2');
 
 const PROD_DIR = path.join(__dirname, '..');
-const LOAD_ORDER = ['Code.gs', 'ProjectMaster.gs'];
+// Code.gs's setupSpreadsheet() now also calls Phase 3's setupWbsSheet_/
+// setupResourceAllocationSheet_/ensurePhase3Config_ (all .gs files share one
+// global scope in the real Apps Script project, so this is only a loading
+// concern for this standalone test file, not a real dependency problem).
+const LOAD_ORDER = ['Code.gs', 'ProjectMaster.gs', 'WbsWorkload.gs'];
 
 function freshContext() {
   const mockGlobals = createMockGasContext({ SS_ID: 'mock-ss', HMAC_SECRET: 'test-secret-do-not-use-in-prod' });
