@@ -145,6 +145,15 @@ function handleCreateWbs_(body, auth) {
   if (!validateWbsStatus_(status)) {
     return { ok: false, message: 'Status tidak dikenal. Lihat Config!WBS_STATUS_LIST.' };
   }
+  // Phase 5.2 hardening: reject negative Man-Day at write time instead of only
+  // flagging it after the fact via getDataQualityReport (same pattern already
+  // used for idealHeadcount in Organization.gs).
+  if (body.planManDay !== undefined && Number(body.planManDay) < 0) {
+    return { ok: false, message: 'Plan Man-Day tidak boleh negatif.' };
+  }
+  if (body.actualManDay !== undefined && Number(body.actualManDay) < 0) {
+    return { ok: false, message: 'Actual Man-Day tidak boleh negatif.' };
+  }
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -173,6 +182,12 @@ function handleCreateWbs_(body, auth) {
 
 function handleUpdateWbs_(body, auth) {
   if (!body.id) return { ok: false, message: 'ID WBS wajib diisi.' };
+  if (body.planManDay !== undefined && Number(body.planManDay) < 0) {
+    return { ok: false, message: 'Plan Man-Day tidak boleh negatif.' };
+  }
+  if (body.actualManDay !== undefined && Number(body.actualManDay) < 0) {
+    return { ok: false, message: 'Actual Man-Day tidak boleh negatif.' };
+  }
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -233,6 +248,12 @@ function handleListWbsForProject_(body) {
  * ============================================================ */
 function handleSaveResourceAllocation_(body, auth) {
   if (!body.wbsId || !body.engineer) return { ok: false, message: 'wbsId dan engineer wajib diisi.' };
+  if (body.planManDay !== undefined && Number(body.planManDay) < 0) {
+    return { ok: false, message: 'Plan Man-Day tidak boleh negatif.' };
+  }
+  if (body.actualManDay !== undefined && Number(body.actualManDay) < 0) {
+    return { ok: false, message: 'Actual Man-Day tidak boleh negatif.' };
+  }
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
