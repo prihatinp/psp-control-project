@@ -101,6 +101,22 @@
     </div>
 
     <div class="nav-group">
+      <div class="nav-label">Project Control (V1.1 — Baru)</div>
+      <button class="nav-item" data-page="pmExternal" onclick="goPage('pmExternal')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 010 20 15.3 15.3 0 010-20z"/></svg>
+        External / Global Projects
+      </button>
+      <button class="nav-item" data-page="pmInternal" onclick="goPage('pmInternal')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-4"/><path d="M9 15L21 3"/><path d="M15 3h6v6"/></svg>
+        Internal Projects
+      </button>
+      <button class="nav-item" data-page="pmAddNew" onclick="goPage('pmAddNew')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        + Add New
+      </button>
+    </div>
+
+    <div class="nav-group">
       <div class="nav-label">Lainnya</div>
       <button class="nav-item" data-page="team" onclick="goPage('team')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
@@ -345,6 +361,98 @@
         </div>
       </div>
       <div class="proj-grid" id="globalGrid"></div>
+    </section>
+
+    <!-- ============================================================
+         PROJECT CONTROL V1.1 (Phase 2 — additive, separate from the
+         legacy Projects list above). Requires the Phase 2 backend
+         (backend/production/*.gs) to be deployed; until then these
+         pages will show a friendly error toast on the actions below.
+         ============================================================ -->
+
+    <!-- EXTERNAL / GLOBAL PROJECTS -->
+    <section class="page" id="page-pmExternal">
+      <div class="topbar">
+        <div><div class="eyebrow">Project Control (V1.1)</div><h2>External / Global Projects</h2></div>
+        <div class="top-actions"><button class="btn btn-dark" onclick="goPage('pmAddNew')">+ Add New</button></div>
+      </div>
+      <div class="filters">
+        <input type="text" id="pmExtSearch" placeholder="Cari nama / customer..." oninput="renderPmExternal()">
+        <select id="pmExtStatus" onchange="renderPmExternal()"><option value="">Semua Status</option></select>
+        <select id="pmExtPic" onchange="renderPmExternal()"><option value="">Semua PIC</option></select>
+        <select id="pmExtPriority" onchange="renderPmExternal()"><option value="">Semua Priority</option></select>
+      </div>
+      <div style="overflow-x:auto;">
+      <table class="data-tbl">
+        <thead><tr><th>No</th><th>Customer / Plant</th><th>Project Name</th><th>RFQ</th><th>PO</th><th>PIC</th><th>Status</th><th>Target</th><th>Priority</th></tr></thead>
+        <tbody id="pmExternalTableBody"></tbody>
+      </table>
+      </div>
+    </section>
+
+    <!-- INTERNAL PROJECTS -->
+    <section class="page" id="page-pmInternal">
+      <div class="topbar">
+        <div><div class="eyebrow">Project Control (V1.1)</div><h2>Internal Projects</h2></div>
+        <div class="top-actions"><button class="btn btn-dark" onclick="goPage('pmAddNew')">+ Add New</button></div>
+      </div>
+      <div class="filters">
+        <input type="text" id="pmIntSearch" placeholder="Cari nama project..." oninput="renderPmInternal()">
+        <select id="pmIntStatus" onchange="renderPmInternal()"><option value="">Semua Status</option></select>
+        <select id="pmIntPic" onchange="renderPmInternal()"><option value="">Semua PIC</option></select>
+        <select id="pmIntPriority" onchange="renderPmInternal()"><option value="">Semua Priority</option></select>
+      </div>
+      <div style="overflow-x:auto;">
+      <table class="data-tbl">
+        <thead><tr><th>No</th><th>Project Name</th><th>Category</th><th>PIC</th><th>Status</th><th>Target</th><th>Priority</th></tr></thead>
+        <tbody id="pmInternalTableBody"></tbody>
+      </table>
+      </div>
+    </section>
+
+    <!-- + ADD NEW (unified entry: select type first, then minimum-input form) -->
+    <section class="page" id="page-pmAddNew">
+      <div class="topbar"><div><div class="eyebrow">Project Control (V1.1)</div><h2>+ Add New</h2></div></div>
+      <div class="section-card" id="pmTypeSelectCard">
+        <h4>1. Select Project Type</h4>
+        <div class="form-actions" style="justify-content:flex-start; gap:12px;">
+          <button class="btn btn-dark" onclick="pmSelectType('EXTERNAL')">EXTERNAL</button>
+          <button class="btn btn-dark" onclick="pmSelectType('INTERNAL')">INTERNAL</button>
+        </div>
+      </div>
+      <div class="section-card" id="pmExternalFormCard" style="display:none;">
+        <h4>New External / Global Project</h4>
+        <div class="form-grid">
+          <div class="f-field"><label>Customer / Plant</label><input id="pmExtCustomer" placeholder="mis. Musashi Vietnam"></div>
+          <div class="f-field"><label>RFQ No</label><input id="pmExtRfqNo"></div>
+          <div class="f-field"><label>RFQ Date</label><input type="date" id="pmExtRfqDate"></div>
+          <div class="f-field"><label>Project Name</label><input id="pmExtName"></div>
+          <div class="f-field full"><label>Request / Scope</label><textarea id="pmExtNote" placeholder="Ringkasan permintaan / lingkup pekerjaan..."></textarea></div>
+          <div class="f-field"><label>PIC</label><select id="pmExtPic2"></select></div>
+          <div class="f-field"><label>Priority</label><select id="pmExtPriority2"><option>Low</option><option selected>Medium</option><option>High</option></select></div>
+          <div class="f-field"><label>Target Date</label><input type="date" id="pmExtTarget"></div>
+          <div class="f-field"><label>Status</label><select id="pmExtStatus2"></select></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-outline" onclick="pmCancelAddNew()">Batal</button>
+          <button class="btn btn-dark" id="pmExtSaveBtn" onclick="savePmProject('EXTERNAL')">Simpan</button>
+        </div>
+      </div>
+      <div class="section-card" id="pmInternalFormCard" style="display:none;">
+        <h4>New Internal Project</h4>
+        <div class="form-grid">
+          <div class="f-field"><label>Project Name</label><input id="pmIntName"></div>
+          <div class="f-field"><label>Category</label><input id="pmIntCategory" placeholder="mis. Automation, Reduce MP, Capacity Up"></div>
+          <div class="f-field"><label>PIC</label><select id="pmIntPic2"></select></div>
+          <div class="f-field"><label>Priority</label><select id="pmIntPriority2"><option>Low</option><option selected>Medium</option><option>High</option></select></div>
+          <div class="f-field"><label>Target Date</label><input type="date" id="pmIntTarget"></div>
+          <div class="f-field full"><label>Note</label><textarea id="pmIntNote"></textarea></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-outline" onclick="pmCancelAddNew()">Batal</button>
+          <button class="btn btn-dark" id="pmIntSaveBtn" onclick="savePmProject('INTERNAL')">Simpan</button>
+        </div>
+      </div>
     </section>
 
   </div>

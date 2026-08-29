@@ -161,7 +161,7 @@ function initLoginOptions() {
   });
 }
 function initSelects() {
-  ['npPic', 'npSupport', 'duEngineer', 'qEngineer', 'sjPic', 'gsPic'].forEach(id => {
+  ['npPic', 'npSupport', 'duEngineer', 'qEngineer', 'sjPic', 'gsPic', 'pmExtPic2', 'pmIntPic2'].forEach(id => {
     const sel = document.getElementById(id); sel.innerHTML = '';
     TEAM.forEach(t => { const o = document.createElement('option'); o.value = t.name; o.textContent = t.name; sel.appendChild(o); });
   });
@@ -239,6 +239,9 @@ function goPage(p) {
   if (p === 'team') renderTeam();
   if (p === 'support') renderSupport();
   if (p === 'global') renderGlobal();
+  if (p === 'pmExternal') renderPmExternal();
+  if (p === 'pmInternal') renderPmInternal();
+  if (p === 'pmAddNew') renderPmAddNew();
 }
 
 /* ============ STATUS LOGIC ============ */
@@ -800,4 +803,144 @@ function exportToPPT() {
 
   pptx.writeFile({ fileName: 'PSP-Project-Control-Report.pptx' });
   toast('Laporan PPT sedang di-generate...');
+}
+
+/* ============================================================
+ *  PROJECT CONTROL V1.1 (Phase 2 — additive, calls new backend
+ *  actions: projectMasterList / externalProjectList / addProjectMaster).
+ *  Requires backend/production/*.gs to be deployed to PSP_API_URL;
+ *  until then these calls return "Aksi tidak dikenal" and the
+ *  existing toast() error path shows it — nothing else on the page
+ *  is affected.
+ *
+ *  Status lists mirror Config!EXTERNAL_PROJECT_STATUS_LIST /
+ *  Config!INTERNAL_PROJECT_STATUS_LIST on the server (see
+ *  backend/production/ProjectMaster.gs ensurePhase2Config_). Kept
+ *  as plain constants here rather than adding another API action,
+ *  to stay within Phase 2's approved action list — if the server
+ *  list is ever edited, update this list to match.
+ * ============================================================ */
+const PM_EXTERNAL_STATUSES = ['PIPELINE', 'RFQ', 'STUDY', 'QUOTATION', 'NEGOTIATION', 'PO', 'EXECUTION', 'ON HOLD', 'COMPLETED', 'CANCELLED'];
+const PM_INTERNAL_STATUSES = ['PIPELINE', 'EXECUTION', 'ON HOLD', 'COMPLETED', 'CANCELLED'];
+let pmProjects = [];
+
+function loadProjectMasterList() {
+  return apiPost('projectMasterList', {}).then(res => {
+    pmProjects = (res && res.projects) || [];
+    return pmProjects;
+  }).catch(err => { toast('Error memuat Project Master: ' + err.message, true); return []; });
+}
+
+function pmFillStatusOptions(selectEl, statuses, includeAll) {
+  selectEl.innerHTML = (includeAll ? '<option value="">Semua Status</option>' : '') +
+    statuses.map(s => `<option value="${s}">${s}</option>`).join('');
+}
+
+function renderPmExternal() {
+  pmFillStatusOptions(document.getElementById('pmExtStatus'), PM_EXTERNAL_STATUSES, true);
+  const picSel = document.getElementById('pmExtPic');
+  picSel.innerHTML = '<option value="">Semua PIC</option>' + TEAM.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+  loadProjectMasterList().then(() => pmRenderExternalTable());
+}
+function pmRenderExternalTable() {
+  const q = (document.getElementById('pmExtSearch').value || '').toLowerCase();
+  const status = document.getElementById('pmExtStatus').value;
+  const pic = document.getElementById('pmExtPic').value;
+  const priority = document.getElementById('pmExtPriority').value;
+  const body = document.getElementById('pmExternalTableBody');
+  let list = pmProjects.filter(p => p.type === 'EXTERNAL');
+  list = list.filter(p => {
+    if (q && !((p.name || '').toLowerCase().includes(q) || (p.customer || '').toLowerCase().includes(q))) return false;
+    if (status && p.status !== status) return false;
+    if (pic && p.pic !== pic) return false;
+    if (priority && p.priority !== priority) return false;
+    return true;
+  });
+  body.innerHTML = list.length ? list.map(p => `<tr>
+    <td class="mono">${escapeHTML(p.no || '-')}</td><td>${escapeHTML(p.customer || '-')}${p.plant ? ' / ' + escapeHTML(p.plant) : ''}</td>
+    <td><b>${escapeHTML(p.name)}</b></td><td class="mono">${escapeHTML(p.rfqNo || '-')}</td><td class="mono">${escapeHTML(p.poNo || '-')}</td>
+    <td>${escapeHTML(p.pic || '-')}</td><td><span class="status-pill" style="background:var(--blue-soft); color:var(--blue);">${escapeHTML(p.status)}</span></td>
+    <td class="mono">${fmtDate(p.targetDate)}</td><td>${escapeHTML(p.priority || '-')}</td>
+  </tr>`).join('') : `<tr><td colspan="9" style="text-align:center; color:var(--mute); padding:24px;">Belum ada External Project.</td></tr>`;
+}
+
+function renderPmInternal() {
+  pmFillStatusOptions(document.getElementById('pmIntStatus'), PM_INTERNAL_STATUSES, true);
+  const picSel = document.getElementById('pmIntPic');
+  picSel.innerHTML = '<option value="">Semua PIC</option>' + TEAM.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+  loadProjectMasterList().then(() => pmRenderInternalTable());
+}
+function pmRenderInternalTable() {
+  const q = (document.getElementById('pmIntSearch').value || '').toLowerCase();
+  const status = document.getElementById('pmIntStatus').value;
+  const pic = document.getElementById('pmIntPic').value;
+  const priority = document.getElementById('pmIntPriority').value;
+  const body = document.getElementById('pmInternalTableBody');
+  let list = pmProjects.filter(p => p.type === 'INTERNAL');
+  list = list.filter(p => {
+    if (q && !(p.name || '').toLowerCase().includes(q)) return false;
+    if (status && p.status !== status) return false;
+    if (pic && p.pic !== pic) return false;
+    if (priority && p.priority !== priority) return false;
+    return true;
+  });
+  body.innerHTML = list.length ? list.map(p => `<tr>
+    <td class="mono">${escapeHTML(p.no || '-')}</td><td><b>${escapeHTML(p.name)}</b></td><td>${escapeHTML(p.category || '-')}</td>
+    <td>${escapeHTML(p.pic || '-')}</td><td><span class="status-pill" style="background:var(--blue-soft); color:var(--blue);">${escapeHTML(p.status)}</span></td>
+    <td class="mono">${fmtDate(p.targetDate)}</td><td>${escapeHTML(p.priority || '-')}</td>
+  </tr>`).join('') : `<tr><td colspan="7" style="text-align:center; color:var(--mute); padding:24px;">Belum ada Internal Project.</td></tr>`;
+}
+
+function renderPmAddNew() {
+  document.getElementById('pmTypeSelectCard').style.display = 'block';
+  document.getElementById('pmExternalFormCard').style.display = 'none';
+  document.getElementById('pmInternalFormCard').style.display = 'none';
+  pmFillStatusOptions(document.getElementById('pmExtStatus2'), PM_EXTERNAL_STATUSES, false);
+}
+function pmSelectType(type) {
+  document.getElementById('pmTypeSelectCard').style.display = 'none';
+  document.getElementById('pmExternalFormCard').style.display = type === 'EXTERNAL' ? 'block' : 'none';
+  document.getElementById('pmInternalFormCard').style.display = type === 'INTERNAL' ? 'block' : 'none';
+}
+function pmCancelAddNew() {
+  renderPmAddNew();
+}
+function savePmProject(type) {
+  const btn = document.getElementById(type === 'EXTERNAL' ? 'pmExtSaveBtn' : 'pmIntSaveBtn');
+  let payload;
+  if (type === 'EXTERNAL') {
+    const name = document.getElementById('pmExtName').value.trim();
+    const targetDate = document.getElementById('pmExtTarget').value;
+    if (!name || !targetDate) { alert('Project Name dan Target Date wajib diisi.'); return; }
+    payload = {
+      type: 'EXTERNAL',
+      customer: document.getElementById('pmExtCustomer').value.trim(),
+      rfqNo: document.getElementById('pmExtRfqNo').value.trim(),
+      rfqDate: document.getElementById('pmExtRfqDate').value,
+      name, note: document.getElementById('pmExtNote').value.trim(),
+      pic: document.getElementById('pmExtPic2').value,
+      priority: document.getElementById('pmExtPriority2').value,
+      targetDate,
+      status: document.getElementById('pmExtStatus2').value || 'PIPELINE'
+    };
+  } else {
+    const name = document.getElementById('pmIntName').value.trim();
+    const targetDate = document.getElementById('pmIntTarget').value;
+    if (!name || !targetDate) { alert('Project Name dan Target Date wajib diisi.'); return; }
+    payload = {
+      type: 'INTERNAL',
+      name, category: document.getElementById('pmIntCategory').value.trim(),
+      pic: document.getElementById('pmIntPic2').value,
+      priority: document.getElementById('pmIntPriority2').value,
+      targetDate,
+      note: document.getElementById('pmIntNote').value.trim()
+    };
+  }
+  btn.disabled = true; btn.textContent = 'Menyimpan...';
+  apiPost('addProjectMaster', payload).then(res => {
+    btn.disabled = false; btn.textContent = 'Simpan';
+    if (!res.ok) { toast(res.message || 'Gagal menyimpan project', true); return; }
+    toast((type === 'EXTERNAL' ? 'External' : 'Internal') + ' project "' + res.project.name + '" berhasil ditambahkan');
+    goPage(type === 'EXTERNAL' ? 'pmExternal' : 'pmInternal');
+  }).catch(err => { btn.disabled = false; btn.textContent = 'Simpan'; toast('Error: ' + err.message, true); });
 }
