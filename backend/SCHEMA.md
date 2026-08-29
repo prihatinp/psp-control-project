@@ -1,4 +1,16 @@
-# Rev D Sheet Schema (Phase 1 Foundation)
+> **SUPERSEDED — historical record only, added by the Phase 5.2 audit.**
+> This document describes the schema imagined for `backend/gas/*` (the
+> Phase 1 scaffold), written before the real legacy `Code.gs` was
+> available. It was never built this way and does not describe
+> `backend/production/*`, which has shipped a completely different,
+> real schema since Phase 2 (`PROJECT_MASTER`, `WBS`,
+> `RESOURCE_ALLOCATION`, `ORG_STRUCTURE` — none of the tables below:
+> `RESOURCE`, `ASSIGNMENT`, `POSITION`, `MP_BASELINE`, `ANNUAL_LOADING`,
+> `SCENARIO` were ever implemented). **For the real, current schema see
+> `backend/production/SCHEMA.md`.** Kept here only so `backend/gas/*`'s
+> own history remains traceable, per `backend/README.md`'s folder table.
+
+# Rev D Sheet Schema (Phase 1 Foundation) — describes backend/gas/* ONLY
 
 Created additively by `setupSchema()` in `backend/gas/SchemaSetup.gs`.
 None of these replace or touch the existing sheets (`Team`, `Stages`,
