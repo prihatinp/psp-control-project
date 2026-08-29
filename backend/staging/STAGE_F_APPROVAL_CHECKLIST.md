@@ -27,15 +27,28 @@ result against the real staging Web App URL counts.
 
 ## Recommendation
 
-**7 of 11 items PASS. 4 items (rows 3, 6, 7, 9, 11 — note row 11 wasn't
-mentioned at all) still need an explicit confirmation before this
-checklist can honestly be called complete.** Rows 6 and 7 are likely
-already covered in substance by "Web App deployment: PASS" but were not
-stated as their own line item, so they are listed as pending rather than
-assumed. **Stage G is not yet reachable — the outstanding items must be
-confirmed (not assumed) first, especially row 11 (rollback rehearsal),
-which was not mentioned at all and is the one item this checklist
-treats as non-negotiable per `DEPLOYMENT_RUNBOOK.md`.**
+**7 of 11 items PASS. 5 items remain PENDING: rows 3, 6, 7, 9, and 11.**
+The human operator has explicitly confirmed rows 3, 6, 7, and 11 as
+`PENDING` (not yet performed) rather than letting them be assumed PASS.
+**Row 9 (legacy-data integrity) is also still open** — it was not part
+of the four rows most recently confirmed and has not been separately
+verified either; do not treat it as resolved.
+
+**Stage G is not reachable. No row here may move to PASS without a real,
+explicit result reported back — see the exact manual steps for rows 3,
+6, 7, and 11 in `SECURITY_VERIFICATION.md` and `ROLLBACK_PLAN.md`, and
+for row 9 below.**
+
+### Row 9 — Legacy-data integrity (still needs a manual check too)
+
+Not yet requested from the human operator in this round, so it is listed
+here for completeness rather than silently dropped: before/after
+`setupSpreadsheet()` and both `migrateLegacyProjects` calls, confirm
+`Team`, `Projects`, `DailyLogs`, `SupportJobs`, and `GlobalSupport` still
+contain exactly their original seed data (row counts and a spot-check of
+a few cells) — a spreadsheet version-history diff (File → Version
+history in Google Sheets) is the fastest way to do this without needing
+a separate backup copy.
 
 ## Sign-off
 
