@@ -13,23 +13,29 @@ result against the real staging Web App URL counts.
 
 | # | Item | Stage | Result | Evidence | Blocking? |
 |---|---|---|---|---|---|
-| 1 | Real GAS API smoke test (25 items) | B | `PENDING` | run `staging-smoke-test.js` against `STAGING_WEB_APP_URL`, paste the summary line | Yes — any FAIL blocks |
-| 2 | Real concurrency result (LockService) | D | `PENDING` | run `concurrency-test.js`; also manually confirm `PROJECT_MASTER!LegacyProjectId` has no duplicates | Yes — this is the one property no mock can substitute for |
-| 3 | Script Properties verification (`HMAC_SECRET`, `SS_ID` present; secret never returned by any API) | B/E | `PENDING` | `SECURITY_VERIFICATION.md` §"Script Properties" | Yes |
-| 4 | Config sheet verification (17 Phase 3–5.1 keys present, no duplicates, `MANAGEMENT_BASELINE_ADDITIONAL_MP` unchanged) | B | `PENDING` | compare against `backend/production/SCHEMA_AUDIT.md` | Yes |
-| 5 | `LOGIN_PIN` rotation decision | E | `PENDING` | state only whether it is still the legacy default (`LEGACY DEFAULT ACTIVE — ROTATION REQUIRED`) or has been rotated — **never paste the actual value here or anywhere in this repository** | Yes — must be a deliberate decision, not silence |
-| 6 | Spreadsheet/Web-App sharing permissions | E | `PENDING` | `SECURITY_VERIFICATION.md` §"Web App configuration" | Yes |
-| 7 | Web App execution identity (`executeAs`/`access` match `appsscript.json`) | B | `PENDING` | Deploy → Manage deployments, compared against `backend/staging/appsscript.json` | Yes |
-| 8 | CORS / real browser behavior result | E | `PENDING` | frontend staging pages load without a console CORS error | Yes |
-| 9 | Legacy-data integrity (Team/Projects/DailyLogs/SupportJobs/GlobalSupport unchanged after setup + migration) | B/C | `PENDING` | compare a spreadsheet snapshot before/after `setupSpreadsheet()` and `migrateLegacyProjects` | Yes |
-| 10 | Frontend staging result (every page, no console error, no "Aksi tidak dikenal") | E | `PENDING` | click-through checklist in `DEPLOYMENT_RUNBOOK.md` Stage D | Yes |
-| 11 | Rollback rehearsal result (against staging) | A/E | `PENDING` | `ROLLBACK_PLAN.md` rehearsed against the staging project per `STAGING_SETUP_CHECKLIST.md` step O | Yes |
+| 1 | Real GAS API smoke test (25 items) | B | `PASS` | reported by human operator: 25/25 PASS | Yes — any FAIL blocks |
+| 2 | Real concurrency result (LockService) | D | `PASS` | reported: concurrency test PASS; `PROJECT_MASTER!LegacyProjectId` checked manually, no duplicates found | Yes — this is the one property no mock can substitute for |
+| 3 | Script Properties verification (`HMAC_SECRET`, `SS_ID` present; secret never returned by any API) | B/E | `PENDING — not yet explicitly confirmed` | not reported separately from the smoke test; needs an explicit look at Script Properties per `SECURITY_VERIFICATION.md` §"Script Properties" | Yes |
+| 4 | Config sheet verification (17 Phase 3–5.1 keys present, no duplicates, `MANAGEMENT_BASELINE_ADDITIONAL_MP` unchanged) | B | `PASS` | reported: "17 Config keys: PASS" (Stage B) | Yes |
+| 5 | `LOGIN_PIN` rotation decision | E | `PASS — ROTATED` | human confirmed the PIN has been rotated away from the legacy default (value itself never disclosed or recorded) | Yes — must be a deliberate decision, not silence |
+| 6 | Spreadsheet/Web-App sharing permissions | E | `PENDING — not yet explicitly confirmed` | "Web App deployment: PASS" was reported, but sharing/permissions specifically (per `SECURITY_VERIFICATION.md` §"Web App configuration") was not called out separately | Yes |
+| 7 | Web App execution identity (`executeAs`/`access` match `appsscript.json`) | B | `PENDING — not yet explicitly confirmed` | same as row 6 — "Web App deployment: PASS" likely covers this, but not stated explicitly | Yes |
+| 8 | CORS / real browser behavior result | E | `PASS` | reported: "CORS: PASS", "Browser console: NO ERROR" | Yes |
+| 9 | Legacy-data integrity (Team/Projects/DailyLogs/SupportJobs/GlobalSupport unchanged after setup + migration) | B/C | `PENDING — not yet explicitly confirmed` | migration idempotency (row-count behavior) was confirmed via "migration #2: PASS, 0 migrated", but a direct before/after check that the legacy sheets themselves are untouched was not separately reported | Yes |
+| 10 | Frontend staging result (every page, no console error, no "Aksi tidak dikenal") | E | `PASS` | reported: "All pages: PASS", "Browser console: NO ERROR" | Yes |
+| 11 | Rollback rehearsal result (against staging) | A/E | `PENDING — not reported at all` | `STAGING_SETUP_CHECKLIST.md` step O / `DEPLOYMENT_RUNBOOK.md` Stage A's rollback rehearsal was not mentioned in the results provided | Yes |
 
 ## Recommendation
 
-Cannot be filled in until every row above is `PASS`. As of this
-checklist's creation: **0 of 11 items have a real result — Stage G
-(Production Deployment) is not reachable yet.**
+**7 of 11 items PASS. 4 items (rows 3, 6, 7, 9, 11 — note row 11 wasn't
+mentioned at all) still need an explicit confirmation before this
+checklist can honestly be called complete.** Rows 6 and 7 are likely
+already covered in substance by "Web App deployment: PASS" but were not
+stated as their own line item, so they are listed as pending rather than
+assumed. **Stage G is not yet reachable — the outstanding items must be
+confirmed (not assumed) first, especially row 11 (rollback rehearsal),
+which was not mentioned at all and is the one item this checklist
+treats as non-negotiable per `DEPLOYMENT_RUNBOOK.md`.**
 
 ## Sign-off
 
