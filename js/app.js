@@ -161,7 +161,7 @@ function initLoginOptions() {
   });
 }
 function initSelects() {
-  ['npPic', 'npSupport', 'duEngineer', 'qEngineer', 'sjPic', 'gsPic', 'pmExtPic2', 'pmIntPic2', 'rcWbsPic', 'rcMdEngineer'].forEach(id => {
+  ['npPic', 'npSupport', 'duEngineer', 'qEngineer', 'sjPic', 'gsPic', 'pmExtPic2', 'pmIntPic2', 'rcWbsPic', 'rcMdEngineer', 'mpOrgPerson'].forEach(id => {
     const sel = document.getElementById(id); sel.innerHTML = '';
     TEAM.forEach(t => { const o = document.createElement('option'); o.value = t.name; o.textContent = t.name; sel.appendChild(o); });
   });
@@ -247,6 +247,11 @@ function goPage(p) {
   if (p === 'rcManDay') renderRcManDayPage();
   if (p === 'rcCapacity') renderRcCapacity();
   if (p === 'rcManpower') renderRcManpower();
+  if (p === 'mpDashboard') renderMpDashboard();
+  if (p === 'mpCalendar') renderMpCalendar();
+  if (p === 'mpOrg') renderMpOrg();
+  if (p === 'mpVacancy') renderMpVacancy();
+  if (p === 'mpScenario') renderMpScenario();
 }
 
 /* ============ STATUS LOGIC ============ */
@@ -1109,5 +1114,150 @@ function renderRcManpower() {
       <div class="kpi c-total"><div class="num">+${res.managementBaselineAdditionalMP}</div><div class="lbl">Management Baseline<br><span style="font-size:9px;">(reference only)</span></div></div>
       <div class="kpi ${res.differenceVsBaseline >= 0 ? 'c-ok' : 'c-warn'}"><div class="num">${res.differenceVsBaseline > 0 ? '+' : ''}${res.differenceVsBaseline}</div><div class="lbl">Difference vs Baseline</div></div>
     `;
+  }).catch(err => toast('Error: ' + err.message, true));
+}
+
+/* ============================================================
+ *  MANPOWER & CAPACITY V1.1 (Phase 4 — additive). Requires
+ *  backend/production/*.gs (Phase 2-4) to be deployed; until then
+ *  these calls return "Aksi tidak dikenal" and toast() shows it.
+ * ============================================================ */
+let mpOrgFlat = [];
+
+/* ---- DASHBOARD (Part K) ---- */
+function renderMpDashboard() {
+  const periodType = document.getElementById('mpDashPeriodType').value;
+  Promise.all([
+    apiPost('getManpowerAnalysis', { periodType }),
+    apiPost('getManpowerBySkill', { periodType }),
+    apiPost('getEngineerLoading', { periodType }),
+    apiPost('getVacancySummary', {}),
+    apiPost('projectMasterList', {}),
+    apiPost('getDataQualityReport', {})
+  ]).then(([mp, skill, eng, vac, projects, dq]) => {
+    if (!mp.ok) { toast(mp.message || 'Gagal memuat manpower analysis', true); return; }
+    const externalCount = (projects.projects || []).filter(p => p.type === 'EXTERNAL').length;
+    const internalCount = (projects.projects || []).filter(p => p.type === 'INTERNAL').length;
+    document.getElementById('mpDashTopCards').innerHTML = `
+      <div class="kpi c-total"><div class="num">${mp.currentMp}</div><div class="lbl">Current MP</div></div>
+      <div class="kpi c-warn"><div class="num">${mp.idealMP.exact}</div><div class="lbl">Ideal MP<br><span style="font-size:9px;">(calculated, roundup ${mp.idealMP.roundedUp})</span></div></div>
+      <div class="kpi ${mp.indicativeAdditionalMPExact > 0 ? 'c-delay' : 'c-done'}"><div class="num">${mp.indicativeAdditionalMPExact}</div><div class="lbl">Indicative Gap<br><span style="font-size:9px;">(not an HR decision)</span></div></div>
+      <div class="kpi c-total"><div class="num">+${mp.managementBaselineAdditionalMP}</div><div class="lbl">Management Baseline<br><span style="font-size:9px;">(reference only)</span></div></div>
+      <div class="kpi c-ok"><div class="num">${externalCount + internalCount}</div><div class="lbl">Active Projects<br><span style="font-size:9px;">${externalCount} External / ${internalCount} Internal</span></div></div>
+      <div class="kpi c-warn"><div class="num">${dq.totalIssues || 0}</div><div class="lbl">Data Quality Issues</div></div>
+    `;
+    document.getElementById('mpDashSkillBody').innerHTML = skill.skills.length ? skill.skills.map(s => `<tr>
+      <td>${escapeHTML(s.skill)}</td><td>${s.currentMp}</td><td>${s.workloadMD}</td><td>${s.availableMD}</td>
+      <td style="color:${s.overloadMD > 0 ? 'var(--coral)' : 'var(--mute)'};">${s.overloadMD}</td>
+    </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--mute); padding:16px;">Belum ada data.</td></tr>`;
+    document.getElementById('mpDashEngineerBody').innerHTML = eng.engineers.length ? eng.engineers.map(e => `<tr>
+      <td>${escapeHTML(e.engineer)}</td><td>${e.plannedMD}</td><td>${e.availableMD}</td>
+      <td><span class="status-pill" style="background:${e.status === 'OVERLOAD' ? 'var(--coral-soft)' : e.status === 'HIGH LOAD' ? 'var(--amber-soft)' : 'var(--green-soft)'}; color:${e.status === 'OVERLOAD' ? 'var(--coral)' : e.status === 'HIGH LOAD' ? 'var(--amber)' : 'var(--green)'};">${e.status}</span></td>
+    </tr>`).join('') : `<tr><td colspan="4" style="text-align:center; color:var(--mute); padding:16px;">Belum ada data.</td></tr>`;
+    document.getElementById('mpDashVacancySummary').innerHTML = vac.vacancies.length ?
+      vac.vacancies.map(v => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--line); font-size:12.5px;">
+        <span><b>${escapeHTML(v.name)}</b> ${v.skill ? '(' + escapeHTML(v.skill) + ')' : ''}</span>
+        <span>Current ${v.current} / Ideal ${v.ideal} — <b style="color:${v.vacant > 0 ? 'var(--coral)' : 'var(--green)'};">Vacant ${v.vacant}</b></span>
+      </div>`).join('') : emptyHTML('Belum ada struktur organisasi dengan target headcount.');
+  }).catch(err => toast('Error: ' + err.message, true));
+}
+
+/* ---- WORKLOAD CALENDAR (Part B) ---- */
+function renderMpCalendar() {
+  const scope = document.getElementById('mpCalScope').value;
+  const valueSel = document.getElementById('mpCalValue');
+  const needsValue = scope === 'ENGINEER' || scope === 'SKILL';
+  valueSel.style.display = needsValue ? '' : 'none';
+  if (needsValue && !valueSel.dataset.loaded) {
+    if (scope === 'ENGINEER') valueSel.innerHTML = TEAM.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+    else valueSel.innerHTML = [...new Set(TEAM.map(t => t.skill).filter(Boolean))].map(s => `<option value="${s}">${s}</option>`).join('');
+    valueSel.dataset.loaded = '1';
+  }
+  if (!needsValue) valueSel.dataset.loaded = '';
+  const periodType = document.getElementById('mpCalPeriodType').value;
+  const value = needsValue ? valueSel.value : '';
+  apiPost('getWorkloadCalendar', { periodType, scope, value }).then(res => {
+    if (!res.ok) { toast(res.message || 'Gagal memuat workload calendar', true); return; }
+    document.getElementById('mpCalKpi').innerHTML = `
+      <div class="kpi c-total"><div class="num">${res.plannedMD}</div><div class="lbl">Planned MD</div></div>
+      <div class="kpi c-ok"><div class="num">${res.actualMD}</div><div class="lbl">Actual MD</div></div>
+      <div class="kpi c-warn"><div class="num">${res.availableMD}</div><div class="lbl">Available Capacity</div></div>
+      <div class="kpi ${res.utilizationPct > 100 ? 'c-delay' : 'c-done'}"><div class="num">${res.utilizationPct}%</div><div class="lbl">Utilization</div></div>
+      <div class="kpi ${res.overloadMD > 0 ? 'c-delay' : 'c-done'}"><div class="num">${res.overloadMD}</div><div class="lbl">Overload MD</div></div>
+    `;
+  }).catch(err => toast('Error: ' + err.message, true));
+}
+
+/* ---- ORGANIZATION (Part C/D) ---- */
+function renderMpOrg() {
+  document.getElementById('mpOrgPerson').innerHTML = '<option value="">— Belum ditugaskan —</option>' + TEAM.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+  apiPost('getOrgStructure', {}).then(res => {
+    if (!res.ok) { toast(res.message || 'Gagal memuat struktur organisasi', true); return; }
+    mpOrgFlat = res.flat;
+    document.getElementById('mpOrgParent').innerHTML = '<option value="">— Root —</option>' +
+      mpOrgFlat.map(n => `<option value="${n.id}">${'— '.repeat(n.level)}${escapeHTML(n.name)}</option>`).join('');
+    const treeEl = document.getElementById('mpOrgTree');
+    if (!res.tree.length) { treeEl.innerHTML = emptyHTML('Belum ada struktur organisasi.'); return; }
+    treeEl.innerHTML = renderOrgTreeHtml(res.tree);
+  }).catch(err => toast('Error: ' + err.message, true));
+}
+function renderOrgTreeHtml(nodes) {
+  return nodes.map(n => `<div style="padding:6px 0 6px ${(n.level - 1) * 20}px; border-bottom:1px dashed var(--line); font-size:12.5px;">
+    <div style="display:flex; justify-content:space-between;">
+      <span>${n.level > 1 ? '↳ ' : ''}<b>${escapeHTML(n.name)}</b>${n.position ? ' — ' + escapeHTML(n.position) : ''}${n.personName ? ' (' + escapeHTML(n.personName) + ')' : ''}</span>
+      <span>${n.idealHeadcount > 0 ? `Current ${n.currentHeadcount} / Ideal ${n.idealHeadcount} <b style="color:${n.vacantHeadcount > 0 ? 'var(--coral)' : 'var(--green)'};">Vacant ${n.vacantHeadcount}</b>` : ''}</span>
+    </div>
+    ${n.children && n.children.length ? renderOrgTreeHtml(n.children) : ''}
+  </div>`).join('');
+}
+function saveMpOrgNode() {
+  const name = document.getElementById('mpOrgName').value.trim();
+  if (!name) { alert('Name wajib diisi.'); return; }
+  const btn = document.getElementById('mpOrgSaveBtn'); btn.disabled = true; btn.textContent = 'Menyimpan...';
+  apiPost('createOrgNode', {
+    parentId: document.getElementById('mpOrgParent').value || '', name,
+    position: document.getElementById('mpOrgPosition').value.trim(),
+    personName: document.getElementById('mpOrgPerson').value,
+    skill: document.getElementById('mpOrgSkill').value.trim(),
+    idealHeadcount: document.getElementById('mpOrgIdeal').value || 0
+  }).then(res => {
+    btn.disabled = false; btn.textContent = 'Simpan';
+    if (!res.ok) { toast(res.message || 'Gagal menyimpan', true); return; }
+    ['mpOrgName', 'mpOrgPosition', 'mpOrgSkill'].forEach(id => document.getElementById(id).value = '');
+    toast('Branch "' + res.node.name + '" ditambahkan');
+    renderMpOrg();
+  }).catch(err => { btn.disabled = false; btn.textContent = 'Simpan'; toast('Error: ' + err.message, true); });
+}
+
+/* ---- VACANCY (Part H) ---- */
+function renderMpVacancy() {
+  apiPost('getVacancySummary', {}).then(res => {
+    if (!res.ok) { toast(res.message || 'Gagal memuat vacancy', true); return; }
+    const grid = document.getElementById('mpVacancyGrid');
+    if (!res.vacancies.length) { grid.innerHTML = emptyHTML('Belum ada struktur organisasi dengan target headcount.'); return; }
+    grid.innerHTML = res.vacancies.map(v => {
+      const filledBoxes = Array.from({ length: v.current }).map(() => `<div style="width:28px; height:28px; border-radius:6px; background:var(--green); display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px;">●</div>`).join('');
+      const vacantBoxes = Array.from({ length: v.vacant }).map(() => `<div style="width:28px; height:28px; border-radius:6px; border:2px dashed var(--coral); display:flex; align-items:center; justify-content:center; color:var(--coral); font-size:11px;">?</div>`).join('');
+      return `<div class="proj-card" style="cursor:default;">
+        <div class="proj-head"><div><div class="proj-name">${escapeHTML(v.name)}</div>${v.skill ? `<div style="font-size:11px; color:var(--mute);">${escapeHTML(v.skill)}</div>` : ''}</div>
+        <span class="status-pill" style="background:${v.vacant > 0 ? 'var(--coral-soft)' : 'var(--green-soft)'}; color:${v.vacant > 0 ? 'var(--coral)' : 'var(--green)'};">Vacant ${v.vacant}</span></div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;">${filledBoxes}${vacantBoxes}</div>
+        <div style="font-size:11px; color:var(--mute); margin-top:10px;">Current ${v.current} / Ideal ${v.ideal}</div>
+      </div>`;
+    }).join('');
+  }).catch(err => toast('Error: ' + err.message, true));
+}
+
+/* ---- SCENARIO (Part I) ---- */
+function renderMpScenario() {
+  const periodType = document.getElementById('mpScenPeriodType').value;
+  apiPost('getManpowerScenario', { periodType }).then(res => {
+    if (!res.ok) { toast(res.message || 'Gagal memuat scenario', true); return; }
+    document.getElementById('mpScenarioBody').innerHTML = res.scenarios.map(s => `<tr>
+      <td><b>${s.label}</b></td><td>${s.simulatedMp}</td><td>${s.availableMD}</td>
+      <td>${s.utilizationPct}%</td>
+      <td style="color:${s.overloadMD > 0 ? 'var(--coral)' : 'var(--mute)'};">${s.overloadMD}</td>
+      <td style="color:${s.remainingGapMD > 0 ? 'var(--coral)' : 'var(--green)'};">${s.remainingGapMD}</td>
+    </tr>`).join('');
   }).catch(err => toast('Error: ' + err.message, true));
 }
