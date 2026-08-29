@@ -38,7 +38,9 @@ const SHEET_NAMES = {
   PROJECT_MASTER: 'PROJECT_MASTER',
   // --- Phase 3 additions: two new sheets, existing keys/values above are untouched ---
   WBS: 'WBS',
-  RESOURCE_ALLOCATION: 'RESOURCE_ALLOCATION'
+  RESOURCE_ALLOCATION: 'RESOURCE_ALLOCATION',
+  // --- Phase 4 addition: one new sheet, existing keys/values above are untouched ---
+  ORG_STRUCTURE: 'ORG_STRUCTURE'
 };
 
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;   // token berlaku 8 jam
@@ -115,8 +117,25 @@ function doPost(e) {
       case 'getEngineerLoading': return jsonOut_(handleGetEngineerLoading_(body));
       case 'getSkillLoading': return jsonOut_(handleGetSkillLoading_(body));
       case 'getManpowerAnalysis': return jsonOut_(handleGetManpowerAnalysis_(body));
-      // --- Phase 3.1 addition: read-only data quality report, no schema change ---
+      // --- Phase 3.1 addition: read-only data quality report, extended in Phase 4 ---
       case 'getDataQualityReport': return jsonOut_(handleGetDataQualityReport_());
+      // --- Phase 4 additions (workload calendar, organization, manpower engine).
+      //     Handlers for calendar/manpower live in WbsWorkload.gs; organization
+      //     handlers live in Organization.gs — both same project, shared scope. ---
+      case 'getWorkloadCalendar': return jsonOut_(handleGetWorkloadCalendar_(body));
+      case 'getWeeklyWorkload': return jsonOut_(handleGetWeeklyWorkload_(body));
+      case 'getMonthlyWorkload': return jsonOut_(handleGetMonthlyWorkload_(body));
+      case 'getSkillCapacity': return jsonOut_(handleGetManpowerBySkill_(body));
+      case 'getEngineerCapacity': return jsonOut_(handleGetEngineerLoading_(body));
+      case 'createOrgNode': return jsonOut_(handleCreateOrgNode_(body, auth));
+      case 'updateOrgNode': return jsonOut_(handleUpdateOrgNode_(body, auth));
+      case 'getOrgStructure': return jsonOut_(handleGetOrgStructure_());
+      case 'getVacancySummary': return jsonOut_(handleGetVacancySummary_());
+      case 'saveVacancy': return jsonOut_(handleSaveVacancy_(body, auth));
+      case 'getManpowerBySkill': return jsonOut_(handleGetManpowerBySkill_(body));
+      case 'getManpowerByEngineer': return jsonOut_(handleGetEngineerLoading_(body));
+      case 'getManpowerScenario': return jsonOut_(handleGetManpowerScenario_(body));
+      case 'getManpowerGap': return jsonOut_(handleGetManpowerAnalysis_(body));
       default: return jsonOut_({ ok: false, message: 'Aksi tidak dikenal.' });
     }
   } catch (err) {
@@ -292,6 +311,9 @@ function setupSpreadsheet() {
   setupWbsSheet_();
   setupResourceAllocationSheet_();
   ensurePhase3Config_();
+  // --- Phase 4 addition: one new sheet + config keys, appended after Phase 3's calls above ---
+  setupOrgStructureSheet_();
+  ensurePhase4Config_();
   getSecret_(); // pastikan HMAC secret sudah dibuat
   const sh1 = ss.getSheetByName('Sheet1');
   if (sh1 && ss.getSheets().length > 1) ss.deleteSheet(sh1);

@@ -86,6 +86,20 @@ function ensurePhase3Config_() {
   });
 }
 
+/** Phase 4 additions to the same real Config sheet — same skip-if-present rule. */
+function ensurePhase4Config_() {
+  var sh = getSheet_(SHEET_NAMES.CONFIG);
+  var existingKeys = {};
+  rowsToObjects_(sh).forEach(function (r) { existingKeys[r.Key] = true; });
+  var defaults = [
+    ['HIGH_LOAD_THRESHOLD_PCT', '85'], // Part G: NORMAL vs HIGH LOAD boundary (OVERLOAD is always >100%)
+    ['ORG_STATUS_LIST', 'ACTIVE,PLANNED,CLOSED']
+  ];
+  defaults.forEach(function (row) {
+    if (!existingKeys[row[0]]) sh.appendRow(row);
+  });
+}
+
 function getConfigNum_(key, fallback) {
   var row = rowsToObjects_(getSheet_(SHEET_NAMES.CONFIG)).filter(function (r) { return r.Key === key; })[0];
   var n = row ? Number(row.Value) : NaN;
@@ -250,13 +264,8 @@ function handleGetResourceAllocation_(body) {
 
 /* ============================================================
  *  DATE / PERIOD HELPERS
- *  Simplification (documented, not hidden): a Man-Day allocation is
- *  attributed to the week/month containing its WBS row's START_DATE
- *  (ACTUAL_START if present) — not spread day-by-day across a
- *  multi-week activity. Precise spreading is a later-phase concern;
- *  Phase 3 is a data foundation, not a scheduling engine.
  * ============================================================ */
-function parseDate_(s) { return s ? new Date(s) : null; }
+function parseDate_(s) { var d = s ? new Date(s) : null; return (d && !isNaN(d.getTime())) ? d : null; }
 function isoWeekStart_(d) {
   var day = d.getDay() || 7; // Sunday=0 -> 7
   var monday = new Date(d);
@@ -265,15 +274,15 @@ function isoWeekStart_(d) {
   return monday.toISOString().slice(0, 10);
 }
 function monthKey_(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
-
-function inPeriod_(dateObj, periodType, periodKey) {
-  if (!dateObj) return false;
-  if (periodType === 'week') return isoWeekStart_(dateObj) === periodKey;
-  return monthKey_(dateObj) === periodKey;
-}
+function periodKeyForDate_(d, periodType) { return periodType === 'week' ? isoWeekStart_(d) : monthKey_(d); }
 function currentPeriodKey_(periodType) {
   var now = new Date();
   return periodType === 'week' ? isoWeekStart_(now) : monthKey_(now);
+}
+function isWorkingDay_(d, perWeek) {
+  var wd = d.getDay(); // 0=Sun..6=Sat
+  var mondayIndexed = wd === 0 ? 7 : wd;
+  return mondayIndexed <= perWeek;
 }
 /** Working days available in the given period under the configured week length. */
 function workingDaysInPeriod_(periodType, periodKey) {
@@ -284,22 +293,91 @@ function workingDaysInPeriod_(periodType, periodKey) {
   var daysInMonth = new Date(year, month + 1, 0).getDate();
   var count = 0;
   for (var d = 1; d <= daysInMonth; d++) {
-    var wd = new Date(year, month, d).getDay(); // 0=Sun..6=Sat
-    var mondayIndexed = wd === 0 ? 7 : wd;
-    if (mondayIndexed <= perWeek) count++;
+    if (isWorkingDay_(new Date(year, month, d), perWeek)) count++;
   }
   return count;
+}
+function countWorkingDaysInRange_(start, end, perWeek) {
+  var count = 0;
+  var d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  var last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (d <= last) {
+    if (isWorkingDay_(d, perWeek)) count++;
+    d.setDate(d.getDate() + 1);
+  }
+  return count;
+}
+
+/* ============================================================
+ *  PART A — MULTI-WEEK MAN-DAY DISTRIBUTION (even distribution
+ *  across working days, per MULTIWEEK_DISTRIBUTION_DESIGN.md).
+ *
+ *  distributeManDay_ returns {periodKey: attributedMD, ...} covering
+ *  every week/month a [startDateStr, targetDateStr] range touches.
+ *  Rules (each with an explicit, tested fallback):
+ *   - missing/invalid START_DATE  -> cannot place anywhere -> {} (empty)
+ *   - missing/invalid TARGET_DATE -> treated as a single-day activity
+ *     (target = start)
+ *   - TARGET_DATE before START_DATE -> same single-day fallback
+ *   - zero working days in the range (e.g. a single-day activity that
+ *     falls on a configured non-working day) -> the full amount is
+ *     attributed to START_DATE's period anyway, so Man-Day is never
+ *     silently lost
+ *   - planManDay <= 0 -> returns {} (never a negative contribution)
+ *  Deterministic: a pure function of its three inputs plus the
+ *  WORKING_DAYS_PER_WEEK config value, no randomness, no side effects.
+ * ============================================================ */
+function distributeManDay_(startDateStr, targetDateStr, planManDay, periodType) {
+  var perWeek = getConfigNum_('WORKING_DAYS_PER_WEEK', 5);
+  var md = Math.max(0, Number(planManDay) || 0);
+  var result = {};
+  if (md === 0) return result;
+
+  var start = parseDate_(startDateStr);
+  if (!start) return result; // no usable start date -> cannot place anywhere, never invented
+
+  var end = parseDate_(targetDateStr);
+  if (!end || end < start) end = start; // missing/invalid target, or target before start -> single-day fallback
+
+  var totalWorkingDays = countWorkingDaysInRange_(start, end, perWeek);
+  if (totalWorkingDays === 0) {
+    // whole range is non-working days (e.g. a single-day activity on a
+    // weekend) -> attribute the full amount to start date's period so
+    // it is never silently dropped
+    result[periodKeyForDate_(start, periodType)] = md;
+    return result;
+  }
+
+  var dailyRate = md / totalWorkingDays;
+  var d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  var last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (d <= last) {
+    if (isWorkingDay_(d, perWeek)) {
+      var key = periodKeyForDate_(d, periodType);
+      result[key] = (result[key] || 0) + dailyRate;
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return result;
+}
+function attributedManDayForPeriod_(startDateStr, targetDateStr, planManDay, periodType, periodKey) {
+  var dist = distributeManDay_(startDateStr, targetDateStr, planManDay, periodType);
+  return dist[periodKey] || 0;
 }
 
 /* ============================================================
  *  WORKLOAD SOURCES
  *  Two sources feed workload, kept distinguishable by "source":
  *   - PROJECT (External/Internal): WBS + RESOURCE_ALLOCATION, joined
- *     to PROJECT_MASTER for the External/Internal split.
+ *     to PROJECT_MASTER for the External/Internal split. Each row now
+ *     carries a date RANGE (not a single date) so distributeManDay_
+ *     can spread it; Actual MD uses ACTUAL_START/ACTUAL_END if set,
+ *     falling back to the planned dates otherwise.
  *   - IRREGULAR: the existing legacy SupportJobs sheet (already has
  *     PIC + ManDay per row) — read-only, exactly as Phase 1.5 found
- *     it. No parallel WBS-for-Irregular-Job structure is invented;
- *     Irregular Job workload already has a working, real home.
+ *     it. A SupportJobs row has one Date, so its "range" is that same
+ *     single day for both start and end (distributeManDay_ handles a
+ *     single-day range correctly, including the weekend edge case).
  * ============================================================ */
 function collectProjectWorkloadRows_() {
   var wbsRows = rowsToObjects_(getSheet_(SHEET_NAMES.WBS));
@@ -314,13 +392,14 @@ function collectProjectWorkloadRows_() {
     var wbs = wbsById[a.WBS_ID];
     if (!wbs) return;
     var project = projectById[wbs.PROJECT_ID];
-    var dateStr = wbs.ACTUAL_START || wbs.START_DATE;
     out.push({
-      date: parseDate_(dateStr),
+      planStart: wbs.START_DATE, planEnd: wbs.TARGET_DATE,
+      actualStart: wbs.ACTUAL_START || wbs.START_DATE, actualEnd: wbs.ACTUAL_END || wbs.TARGET_DATE,
       engineer: a.ENGINEER_NAME,
       planManDay: Number(a.PLAN_MAN_DAY) || 0,
       actualManDay: Number(a.ACTUAL_MAN_DAY) || 0,
       projectType: project ? project.Type : 'UNKNOWN',
+      projectId: wbs.PROJECT_ID,
       source: 'PROJECT',
       wbsId: wbs.WBS_ID,
       skill: wbs.SKILL || ''
@@ -331,11 +410,12 @@ function collectProjectWorkloadRows_() {
 function collectIrregularWorkloadRows_() {
   return rowsToObjects_(getSheet_(SHEET_NAMES.SUPPORT)).map(function (j) {
     return {
-      date: parseDate_(j.Date),
+      planStart: j.Date, planEnd: j.Date, actualStart: j.Date, actualEnd: j.Date,
       engineer: j.PIC,
       planManDay: Number(j.ManDay) || 0,
       actualManDay: Number(j.ManDay) || 0, // legacy SupportJobs has one ManDay field only (realized), used for both
       projectType: 'IRREGULAR',
+      projectId: '',
       source: 'IRREGULAR',
       wbsId: '',
       skill: ''
@@ -345,40 +425,54 @@ function collectIrregularWorkloadRows_() {
 function allWorkloadRows_() {
   return collectProjectWorkloadRows_().concat(collectIrregularWorkloadRows_());
 }
+/** Sum of distributed Plan/Actual MD for a set of rows in one period. */
+function sumDistributedMd_(rows, periodType, periodKey) {
+  var plannedMD = 0, actualMD = 0;
+  rows.forEach(function (r) {
+    plannedMD += attributedManDayForPeriod_(r.planStart, r.planEnd, r.planManDay, periodType, periodKey);
+    actualMD += attributedManDayForPeriod_(r.actualStart, r.actualEnd, r.actualManDay, periodType, periodKey);
+  });
+  return { plannedMD: plannedMD, actualMD: actualMD };
+}
 
 /* ============================================================
- *  H. WEEKLY / MONTHLY WORKLOAD SUMMARY
+ *  H. WEEKLY / MONTHLY WORKLOAD SUMMARY (now using distributed MD)
  * ============================================================ */
 function handleGetWorkloadSummary_(body) {
   var periodType = (body && body.periodType === 'month') ? 'month' : 'week';
   var periodKey = (body && body.periodKey) || currentPeriodKey_(periodType);
-  var rows = allWorkloadRows_().filter(function (r) { return inPeriod_(r.date, periodType, periodKey); });
+  var rows = allWorkloadRows_();
 
   var currentMp = rowsToObjects_(getSheet_(SHEET_NAMES.TEAM)).length;
   var workingDays = workingDaysInPeriod_(periodType, periodKey);
   var utilization = getConfigNum_('UTILIZATION_FACTOR', 0.75);
   var availableMD = currentMp * workingDays * utilization;
 
-  var plannedMD = rows.reduce(function (s, r) { return s + r.planManDay; }, 0);
-  var actualMD = rows.reduce(function (s, r) { return s + r.actualManDay; }, 0);
+  var totals = sumDistributedMd_(rows, periodType, periodKey);
+  var plannedMD = totals.plannedMD, actualMD = totals.actualMD;
   var remainingMD = availableMD - actualMD;
   var utilizationPct = availableMD > 0 ? Math.round((plannedMD / availableMD) * 100) : 0;
   var overloadMD = Math.max(0, plannedMD - availableMD);
   var underloadMD = Math.max(0, availableMD - plannedMD);
 
   function byType(type) {
-    var subset = rows.filter(function (r) { return r.projectType === type; });
-    return { plannedMD: subset.reduce(function (s, r) { return s + r.planManDay; }, 0), actualMD: subset.reduce(function (s, r) { return s + r.actualManDay; }, 0) };
+    return sumDistributedMd_(rows.filter(function (r) { return r.projectType === type; }), periodType, periodKey);
   }
 
   return {
     ok: true, periodType: periodType, periodKey: periodKey,
-    totalPlannedMD: plannedMD, totalActualMD: actualMD,
-    availableMD: availableMD, remainingMD: remainingMD,
-    utilizationPct: utilizationPct, overloadMD: overloadMD, underloadMD: underloadMD,
-    byType: { EXTERNAL: byType('EXTERNAL'), INTERNAL: byType('INTERNAL'), IRREGULAR: byType('IRREGULAR') }
+    totalPlannedMD: round2_(plannedMD), totalActualMD: round2_(actualMD),
+    availableMD: round2_(availableMD), remainingMD: round2_(remainingMD),
+    utilizationPct: utilizationPct, overloadMD: round2_(overloadMD), underloadMD: round2_(underloadMD),
+    byType: {
+      EXTERNAL: roundPair_(byType('EXTERNAL')),
+      INTERNAL: roundPair_(byType('INTERNAL')),
+      IRREGULAR: roundPair_(byType('IRREGULAR'))
+    }
   };
 }
+function round2_(n) { return Math.round(n * 100) / 100; }
+function roundPair_(p) { return { plannedMD: round2_(p.plannedMD), actualMD: round2_(p.actualMD) }; }
 
 /* ============================================================
  *  D. CAPACITY SUMMARY (gross vs net)
@@ -406,59 +500,97 @@ function handleGetCapacitySummary_(body) {
 }
 
 /* ============================================================
- *  E/F/I. ENGINEER LOADING + OVERLOAD DETECTION + SKILL LOADING
+ *  E/F/G/I. ENGINEER LOADING + OVERLOAD DETECTION + SKILL LOADING
+ *  (distributed MD; engineer loading now also reports Skill and the
+ *  4-state status Part G asks for: AVAILABLE / NORMAL / HIGH LOAD /
+ *  OVERLOAD — the threshold between NORMAL and HIGH LOAD is a new
+ *  configurable Config key, HIGH_LOAD_THRESHOLD_PCT, default 85.)
  * ============================================================ */
+function teamSkillByName_() {
+  var map = {};
+  rowsToObjects_(getSheet_(SHEET_NAMES.TEAM)).forEach(function (t) { map[t.Name] = t.Skill || 'Unassigned'; });
+  return map;
+}
+function engineerLoadStatus_(plannedMD, availableMD) {
+  if (plannedMD <= 0) return 'AVAILABLE';
+  if (availableMD <= 0) return 'OVERLOAD';
+  var pct = (plannedMD / availableMD) * 100;
+  var highLoadThreshold = getConfigNum_('HIGH_LOAD_THRESHOLD_PCT', 85);
+  if (pct > 100) return 'OVERLOAD';
+  if (pct >= highLoadThreshold) return 'HIGH LOAD';
+  return 'NORMAL';
+}
+
 function handleGetEngineerLoading_(body) {
   var periodType = (body && body.periodType === 'month') ? 'month' : 'week';
   var periodKey = (body && body.periodKey) || currentPeriodKey_(periodType);
-  var rows = allWorkloadRows_().filter(function (r) { return inPeriod_(r.date, periodType, periodKey); });
+  var rows = allWorkloadRows_();
   var workingDays = workingDaysInPeriod_(periodType, periodKey);
   var utilization = getConfigNum_('UTILIZATION_FACTOR', 0.75);
   var personalAvailableMD = workingDays * utilization; // per-person net capacity for the period
+  var skillByName = teamSkillByName_();
 
   var byEngineer = {};
   rows.forEach(function (r) {
     if (!r.engineer) return;
-    if (!byEngineer[r.engineer]) byEngineer[r.engineer] = { engineer: r.engineer, plannedMD: 0, actualMD: 0 };
-    byEngineer[r.engineer].plannedMD += r.planManDay;
-    byEngineer[r.engineer].actualMD += r.actualManDay;
+    var planned = attributedManDayForPeriod_(r.planStart, r.planEnd, r.planManDay, periodType, periodKey);
+    var actual = attributedManDayForPeriod_(r.actualStart, r.actualEnd, r.actualManDay, periodType, periodKey);
+    if (!byEngineer[r.engineer]) byEngineer[r.engineer] = { engineer: r.engineer, skill: skillByName[r.engineer] || 'Unassigned', plannedMD: 0, actualMD: 0 };
+    byEngineer[r.engineer].plannedMD += planned;
+    byEngineer[r.engineer].actualMD += actual;
   });
 
   var list = Object.keys(byEngineer).map(function (name) {
     var e = byEngineer[name];
     var overload = Math.max(0, e.plannedMD - personalAvailableMD);
-    return Object.assign({}, e, {
-      availableMD: personalAvailableMD,
-      overloadMD: overload,
-      status: overload > 0 ? 'OVERLOAD' : 'OK'
-    });
+    return {
+      engineer: e.engineer, skill: e.skill,
+      plannedMD: round2_(e.plannedMD), actualMD: round2_(e.actualMD),
+      availableMD: round2_(personalAvailableMD),
+      overloadMD: round2_(overload),
+      status: engineerLoadStatus_(e.plannedMD, personalAvailableMD)
+    };
   });
 
-  return { ok: true, periodType: periodType, periodKey: periodKey, personalAvailableMD: personalAvailableMD, engineers: list };
+  return { ok: true, periodType: periodType, periodKey: periodKey, personalAvailableMD: round2_(personalAvailableMD), engineers: list };
 }
 
 function handleGetSkillLoading_(body) {
   var periodType = (body && body.periodType === 'month') ? 'month' : 'week';
   var periodKey = (body && body.periodKey) || currentPeriodKey_(periodType);
-  var rows = allWorkloadRows_().filter(function (r) { return inPeriod_(r.date, periodType, periodKey); });
-
-  var skillByName = {};
-  rowsToObjects_(getSheet_(SHEET_NAMES.TEAM)).forEach(function (t) { skillByName[t.Name] = t.Skill || 'Unassigned'; });
+  var rows = allWorkloadRows_();
+  var skillByName = teamSkillByName_();
 
   var bySkill = {};
   rows.forEach(function (r) {
     var skill = skillByName[r.engineer] || 'Unassigned';
+    var planned = attributedManDayForPeriod_(r.planStart, r.planEnd, r.planManDay, periodType, periodKey);
+    var actual = attributedManDayForPeriod_(r.actualStart, r.actualEnd, r.actualManDay, periodType, periodKey);
     if (!bySkill[skill]) bySkill[skill] = { skill: skill, plannedMD: 0, actualMD: 0 };
-    bySkill[skill].plannedMD += r.planManDay;
-    bySkill[skill].actualMD += r.actualManDay;
+    bySkill[skill].plannedMD += planned;
+    bySkill[skill].actualMD += actual;
   });
 
-  return { ok: true, periodType: periodType, periodKey: periodKey, skills: Object.keys(bySkill).map(function (k) { return bySkill[k]; }) };
+  return {
+    ok: true, periodType: periodType, periodKey: periodKey,
+    skills: Object.keys(bySkill).map(function (k) { return Object.assign({ skill: k }, roundPair_(bySkill[k])); })
+  };
 }
 
 /* ============================================================
  *  J/K. MANPOWER GAP FOUNDATION + MANAGEMENT BASELINE COMPARISON
  * ============================================================ */
+/**
+ * Part E/J: Current vs Ideal MP, and System Calculation vs Management
+ * Baseline. Backward-compatible with the Phase 3 response shape (every
+ * flat field Phase 3's frontend/tests already read is unchanged) —
+ * Phase 4 adds Ideal MP and exact/rounded-up/tag fields alongside,
+ * it does not restructure what's already shipped.
+ *
+ * Tags: CALCULATED = this engine's own output from live workload/
+ * capacity data; REFERENCE = the management-entered baseline, never
+ * derived or overwritten by this function.
+ */
 function handleGetManpowerAnalysis_(body) {
   var periodType = (body && body.periodType === 'month') ? 'month' : 'week';
   var periodKey = (body && body.periodKey) || currentPeriodKey_(periodType);
@@ -466,22 +598,32 @@ function handleGetManpowerAnalysis_(body) {
   var workload = handleGetWorkloadSummary_({ periodType: periodType, periodKey: periodKey });
   var capacity = handleGetCapacitySummary_({ periodType: periodType, periodKey: periodKey });
 
+  var currentMp = capacity.currentMp;
   var requiredMD = workload.totalPlannedMD;
   var availableMD = capacity.netCapacityMD;
   var gapMD = requiredMD - availableMD;
   var perPersonNetMD = capacity.workingDays * capacity.utilizationFactor;
-  var indicativeAdditionalMP = gapMD > 0 && perPersonNetMD > 0 ? gapMD / perPersonNetMD : 0;
-
+  var indicativeAdditionalMPExact = gapMD > 0 && perPersonNetMD > 0 ? gapMD / perPersonNetMD : 0;
+  var idealMPExact = currentMp + indicativeAdditionalMPExact;
   var baselineMP = getConfigNum_('MANAGEMENT_BASELINE_ADDITIONAL_MP', 8);
 
   return {
     ok: true, periodType: periodType, periodKey: periodKey,
-    currentMp: capacity.currentMp, requiredMD: requiredMD, availableMD: availableMD, gapMD: gapMD,
-    indicativeAdditionalMP: Math.round(indicativeAdditionalMP * 10) / 10,
+    // --- Phase 3 fields, unchanged shape (existing frontend/tests depend on these) ---
+    currentMp: currentMp, requiredMD: requiredMD, availableMD: availableMD, gapMD: gapMD,
+    indicativeAdditionalMP: Math.round(indicativeAdditionalMPExact * 10) / 10,
     indicativeAdditionalMPLabel: 'Indicative Additional MP — system calculation, NOT an HR recommendation',
     managementBaselineAdditionalMP: baselineMP,
     managementBaselineLabel: 'Management Baseline — Reference Only',
-    differenceVsBaseline: Math.round((indicativeAdditionalMP - baselineMP) * 10) / 10
+    differenceVsBaseline: Math.round((indicativeAdditionalMPExact - baselineMP) * 10) / 10,
+    // --- Phase 4 additions: Ideal MP (Part E) + exact/rounded-up + CALCULATED/REFERENCE tags (Part J) ---
+    idealMP: {
+      exact: round2_(idealMPExact), roundedUp: Math.ceil(idealMPExact), tag: 'CALCULATED',
+      label: 'Ideal MP (= Calculated Required MP) — Current MP + Indicative Additional MP, not rounded prematurely'
+    },
+    indicativeAdditionalMPExact: round2_(indicativeAdditionalMPExact),
+    indicativeAdditionalMPRoundedUp: Math.ceil(indicativeAdditionalMPExact),
+    currentMpTag: 'CALCULATED', managementBaselineTag: 'REFERENCE'
   };
 }
 
@@ -501,11 +643,14 @@ function handleGetDataQualityReport_() {
   var teamNames = {};
   rowsToObjects_(getSheet_(SHEET_NAMES.TEAM)).forEach(function (t) { teamNames[t.Name] = true; });
   var projects = rowsToObjects_(getSheet_(SHEET_NAMES.PROJECT_MASTER));
-  var projectIds = {};
-  projects.forEach(function (p) { projectIds[p.ID] = true; });
+  var projectById = {};
+  projects.forEach(function (p) { projectById[p.ID] = p; });
   var wbsRows = rowsToObjects_(getSheet_(SHEET_NAMES.WBS));
   var wbsProjectIdsSeen = {};
   var statusList = getConfigList_('WBS_STATUS_LIST', ['NOT STARTED']);
+  var allocRows = rowsToObjects_(getSheet_(SHEET_NAMES.RESOURCE_ALLOCATION));
+  var wbsIdsWithAlloc = {};
+  allocRows.forEach(function (a) { wbsIdsWithAlloc[a.WBS_ID] = true; });
 
   wbsRows.forEach(function (w) {
     wbsProjectIdsSeen[w.PROJECT_ID] = true;
@@ -515,7 +660,17 @@ function handleGetDataQualityReport_() {
     if (!w.TARGET_DATE) add('MISSING_TARGET_DATE', 'INFO', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" has no target date.');
     if (Number(w.PLAN_MAN_DAY) < 0) add('NEGATIVE_MAN_DAY', 'ERROR', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" has a negative Plan Man-Day.');
     if (w.STATUS && statusList.indexOf(w.STATUS) === -1) add('INVALID_STATUS', 'ERROR', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" has status "' + w.STATUS + '", not in Config!WBS_STATUS_LIST.');
-    if (w.PROJECT_ID && !projectIds[w.PROJECT_ID]) add('WBS_WITHOUT_PROJECT', 'ERROR', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" references PROJECT_ID "' + w.PROJECT_ID + '", which does not exist in PROJECT_MASTER.');
+    var project = w.PROJECT_ID ? projectById[w.PROJECT_ID] : null;
+    if (w.PROJECT_ID && !project) add('WBS_WITHOUT_PROJECT', 'ERROR', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" references PROJECT_ID "' + w.PROJECT_ID + '", which does not exist in PROJECT_MASTER.');
+    if (!wbsIdsWithAlloc[w.WBS_ID]) add('WBS_WITHOUT_RESOURCE', 'INFO', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" has no resource allocation yet.');
+    var wStart = parseDate_(w.START_DATE), wEnd = parseDate_(w.TARGET_DATE);
+    if (wStart && wEnd && wEnd < wStart) add('INVALID_DATE_RANGE', 'ERROR', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" has Target Date before Start Date.');
+    if (project && wStart) {
+      var pStart = parseDate_(project.IntakeDate), pTarget = parseDate_(project.TargetDate);
+      if ((pStart && wStart < pStart) || (pTarget && wEnd && wEnd > pTarget)) {
+        add('ACTIVITY_OUTSIDE_PROJECT_PERIOD', 'WARNING', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" falls outside its project\'s Intake–Target date range.');
+      }
+    }
   });
 
   projects.forEach(function (p) {
@@ -523,7 +678,6 @@ function handleGetDataQualityReport_() {
     if (!wbsProjectIdsSeen[p.ID]) add('PROJECT_WITHOUT_WBS', 'INFO', 'PROJECT_MASTER', p.ID, 'Project "' + p.Name + '" has no WBS rows yet.');
   });
 
-  var allocRows = rowsToObjects_(getSheet_(SHEET_NAMES.RESOURCE_ALLOCATION));
   var seenAllocKeys = {};
   allocRows.forEach(function (a) {
     if (!a.ENGINEER_NAME || !teamNames[a.ENGINEER_NAME]) {
@@ -537,8 +691,155 @@ function handleGetDataQualityReport_() {
     seenAllocKeys[key] = true;
   });
 
+  var orgRows = rowsToObjects_(getSheet_(SHEET_NAMES.ORG_STRUCTURE));
+  var orgIds = {};
+  orgRows.forEach(function (o) { orgIds[o.ORG_ID] = true; });
+  orgRows.forEach(function (o) {
+    if (o.PARENT_ORG_ID && !orgIds[o.PARENT_ORG_ID]) {
+      add('ORPHAN_ORG_NODE', 'ERROR', 'ORG_STRUCTURE', o.ORG_ID, 'Org node "' + o.ORG_NAME + '" references PARENT_ORG_ID "' + o.PARENT_ORG_ID + '", which does not exist.');
+    }
+    if (o.PERSON_NAME && !teamNames[o.PERSON_NAME]) {
+      add('ORPHAN_ORG_NODE', 'ERROR', 'ORG_STRUCTURE', o.ORG_ID, 'Org node "' + o.ORG_NAME + '" is assigned to "' + o.PERSON_NAME + '", not found in Team.');
+    }
+    if (Number(o.IDEAL_HEADCOUNT) < 0) {
+      add('INVALID_VACANCY', 'ERROR', 'ORG_STRUCTURE', o.ORG_ID, 'Org node "' + o.ORG_NAME + '" has a negative Ideal Headcount.');
+    }
+  });
+
   var bySeverity = { ERROR: 0, WARNING: 0, INFO: 0 };
   issues.forEach(function (i) { bySeverity[i.severity] = (bySeverity[i.severity] || 0) + 1; });
 
   return { ok: true, totalIssues: issues.length, bySeverity: bySeverity, issues: issues };
+}
+
+/* ============================================================
+ *  PHASE 4 — PART B: WORKLOAD CALENDAR (weekly/monthly, filterable
+ *  by All PSP / Engineer / Skill / Project / External / Internal /
+ *  Irregular). Reuses the same distributed-MD engine as
+ *  getWorkloadSummary_ — this is that same computation with a scope
+ *  filter applied before summing, not a parallel calculation.
+ * ============================================================ */
+function filterWorkloadRows_(rows, scope, value) {
+  if (!scope || scope === 'ALL') return rows;
+  if (scope === 'EXTERNAL') return rows.filter(function (r) { return r.projectType === 'EXTERNAL'; });
+  if (scope === 'INTERNAL') return rows.filter(function (r) { return r.projectType === 'INTERNAL'; });
+  if (scope === 'IRREGULAR') return rows.filter(function (r) { return r.projectType === 'IRREGULAR'; });
+  if (scope === 'ENGINEER') return rows.filter(function (r) { return r.engineer === value; });
+  if (scope === 'PROJECT') return rows.filter(function (r) { return r.projectId === value; });
+  if (scope === 'SKILL') {
+    var skillByName = teamSkillByName_();
+    return rows.filter(function (r) { return (skillByName[r.engineer] || 'Unassigned') === value; });
+  }
+  return rows;
+}
+/** Available capacity for a given scope — team-wide net capacity for
+ *  ALL/type/project scopes (none of those are person-specific), a
+ *  single person's net capacity for ENGINEER, and the net capacity of
+ *  everyone with that skill for SKILL. */
+function availableMdForScope_(scope, value, periodType, periodKey) {
+  var workingDays = workingDaysInPeriod_(periodType, periodKey);
+  var utilization = getConfigNum_('UTILIZATION_FACTOR', 0.75);
+  var perPersonNetMD = workingDays * utilization;
+  if (scope === 'ENGINEER') return perPersonNetMD;
+  if (scope === 'SKILL') {
+    var count = rowsToObjects_(getSheet_(SHEET_NAMES.TEAM)).filter(function (t) { return (t.Skill || 'Unassigned') === value; }).length;
+    return count * perPersonNetMD;
+  }
+  var currentMp = rowsToObjects_(getSheet_(SHEET_NAMES.TEAM)).length;
+  return currentMp * perPersonNetMD;
+}
+
+function handleGetWorkloadCalendar_(body) {
+  var periodType = (body && body.periodType === 'month') ? 'month' : 'week';
+  var periodKey = (body && body.periodKey) || currentPeriodKey_(periodType);
+  var scope = (body && body.scope) || 'ALL';
+  var value = (body && body.value) || '';
+
+  var rows = filterWorkloadRows_(allWorkloadRows_(), scope, value);
+  var totals = sumDistributedMd_(rows, periodType, periodKey);
+  var availableMD = availableMdForScope_(scope, value, periodType, periodKey);
+  var utilizationPct = availableMD > 0 ? Math.round((totals.plannedMD / availableMD) * 100) : 0;
+  var overloadMD = Math.max(0, totals.plannedMD - availableMD);
+
+  return {
+    ok: true, periodType: periodType, periodKey: periodKey, scope: scope, value: value,
+    plannedMD: round2_(totals.plannedMD), actualMD: round2_(totals.actualMD),
+    availableMD: round2_(availableMD), utilizationPct: utilizationPct, overloadMD: round2_(overloadMD)
+  };
+}
+function handleGetWeeklyWorkload_(body) { return handleGetWorkloadCalendar_(Object.assign({}, body, { periodType: 'week' })); }
+function handleGetMonthlyWorkload_(body) { return handleGetWorkloadCalendar_(Object.assign({}, body, { periodType: 'month' })); }
+
+/* ============================================================
+ *  PHASE 4 — PART F: MANPOWER BY SKILL. Skill groups come only from
+ *  Team.Skill (no hard-coded skill list) — a skill with zero people
+ *  and zero workload simply won't appear, matching "do not invent
+ *  fake skills."
+ * ============================================================ */
+function handleGetManpowerBySkill_(body) {
+  var periodType = (body && body.periodType === 'month') ? 'month' : 'week';
+  var periodKey = (body && body.periodKey) || currentPeriodKey_(periodType);
+  var workingDays = workingDaysInPeriod_(periodType, periodKey);
+  var utilization = getConfigNum_('UTILIZATION_FACTOR', 0.75);
+  var perPersonNetMD = workingDays * utilization;
+
+  var teamBySkill = {};
+  rowsToObjects_(getSheet_(SHEET_NAMES.TEAM)).forEach(function (t) {
+    var skill = t.Skill || 'Unassigned';
+    teamBySkill[skill] = (teamBySkill[skill] || 0) + 1;
+  });
+
+  var loading = handleGetSkillLoading_({ periodType: periodType, periodKey: periodKey }).skills;
+  var loadingBySkill = {};
+  loading.forEach(function (s) { loadingBySkill[s.skill] = s; });
+
+  var allSkills = Object.keys(teamBySkill);
+  loading.forEach(function (s) { if (allSkills.indexOf(s.skill) === -1) allSkills.push(s.skill); });
+
+  var result = allSkills.map(function (skill) {
+    var currentMp = teamBySkill[skill] || 0;
+    var availableMD = currentMp * perPersonNetMD;
+    var workloadMD = (loadingBySkill[skill] && loadingBySkill[skill].plannedMD) || 0;
+    var overloadMD = Math.max(0, workloadMD - availableMD);
+    var indicativeAdditionalMP = overloadMD > 0 && perPersonNetMD > 0 ? overloadMD / perPersonNetMD : 0;
+    return {
+      skill: skill, currentMp: currentMp, availableMD: round2_(availableMD),
+      workloadMD: round2_(workloadMD), overloadMD: round2_(overloadMD),
+      indicativeAdditionalMP: round2_(indicativeAdditionalMP)
+    };
+  });
+
+  return { ok: true, periodType: periodType, periodKey: periodKey, skills: result };
+}
+
+/* ============================================================
+ *  PHASE 4 — PART I: MANPOWER SCENARIO (CURRENT / +1 / +2 / +4 / +8).
+ *  Read-only simulation — never writes to Team or any other sheet.
+ * ============================================================ */
+function handleGetManpowerScenario_(body) {
+  var periodType = (body && body.periodType === 'month') ? 'month' : 'week';
+  var periodKey = (body && body.periodKey) || currentPeriodKey_(periodType);
+
+  var workload = handleGetWorkloadSummary_({ periodType: periodType, periodKey: periodKey });
+  var currentMp = rowsToObjects_(getSheet_(SHEET_NAMES.TEAM)).length;
+  var workingDays = workingDaysInPeriod_(periodType, periodKey);
+  var utilization = getConfigNum_('UTILIZATION_FACTOR', 0.75);
+  var requiredMD = workload.totalPlannedMD;
+
+  var deltas = [0, 1, 2, 4, 8];
+  var scenarios = deltas.map(function (delta) {
+    var simulatedMp = currentMp + delta;
+    var availableMD = simulatedMp * workingDays * utilization;
+    var overloadMD = Math.max(0, requiredMD - availableMD);
+    var remainingGapMD = requiredMD - availableMD;
+    return {
+      label: delta === 0 ? 'CURRENT' : 'CURRENT + ' + delta,
+      simulatedMp: simulatedMp, availableMD: round2_(availableMD),
+      utilizationPct: availableMD > 0 ? Math.round((requiredMD / availableMD) * 100) : 0,
+      overloadMD: round2_(overloadMD), remainingGapMD: round2_(remainingGapMD),
+      tag: 'SIMULATION'
+    };
+  });
+
+  return { ok: true, periodType: periodType, periodKey: periodKey, requiredMD: round2_(requiredMD), scenarios: scenarios };
 }
