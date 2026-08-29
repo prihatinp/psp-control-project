@@ -117,6 +117,30 @@
     </div>
 
     <div class="nav-group">
+      <div class="nav-label">Resource & Capacity (V1.1 — Baru)</div>
+      <button class="nav-item" data-page="rcWbs" onclick="goPage('rcWbs')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-4"/><path d="M9 15L21 3"/><path d="M15 3h6v6"/></svg>
+        WBS
+      </button>
+      <button class="nav-item" data-page="rcWorkload" onclick="goPage('rcWorkload')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        Workload
+      </button>
+      <button class="nav-item" data-page="rcManDay" onclick="goPage('rcManDay')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        Man-Day
+      </button>
+      <button class="nav-item" data-page="rcCapacity" onclick="goPage('rcCapacity')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        Capacity
+      </button>
+      <button class="nav-item" data-page="rcManpower" onclick="goPage('rcManpower')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
+        Manpower Analysis
+      </button>
+    </div>
+
+    <div class="nav-group">
       <div class="nav-label">Lainnya</div>
       <button class="nav-item" data-page="team" onclick="goPage('team')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
@@ -452,6 +476,127 @@
           <button class="btn btn-outline" onclick="pmCancelAddNew()">Batal</button>
           <button class="btn btn-dark" id="pmIntSaveBtn" onclick="savePmProject('INTERNAL')">Simpan</button>
         </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         RESOURCE & CAPACITY V1.1 (Phase 3 — additive foundation).
+         Requires backend/production/*.gs to be deployed; until then
+         these pages show a friendly error toast on the actions below.
+         ============================================================ -->
+
+    <!-- WBS -->
+    <section class="page" id="page-rcWbs">
+      <div class="topbar"><div><div class="eyebrow">Resource & Capacity (V1.1)</div><h2>WBS</h2></div></div>
+      <div class="section-card">
+        <div class="form-grid">
+          <div class="f-field"><label>Project</label><select id="rcWbsProject" onchange="renderRcWbsTree()"></select></div>
+        </div>
+      </div>
+      <div class="section-card">
+        <h4>WBS Tree</h4>
+        <div id="rcWbsTree"></div>
+      </div>
+      <div class="section-card">
+        <h4>Add WBS Row (Phase / Activity / Task)</h4>
+        <div class="form-grid">
+          <div class="f-field"><label>Parent (kosongkan untuk top-level)</label><select id="rcWbsParent"><option value="">— Top level —</option></select></div>
+          <div class="f-field"><label>Name</label><input id="rcWbsName"></div>
+          <div class="f-field"><label>Type</label><input id="rcWbsType" placeholder="Phase / Activity / Task"></div>
+          <div class="f-field"><label>PIC</label><select id="rcWbsPic"></select></div>
+          <div class="f-field"><label>Skill</label><input id="rcWbsSkill" placeholder="mis. Electrical / PLC"></div>
+          <div class="f-field"><label>Start Date</label><input type="date" id="rcWbsStart"></div>
+          <div class="f-field"><label>Target Date</label><input type="date" id="rcWbsTarget"></div>
+          <div class="f-field"><label>Plan Man-Day</label><input type="number" id="rcWbsPlanMd" min="0" step="0.5"></div>
+        </div>
+        <div class="form-actions"><button class="btn btn-dark" id="rcWbsSaveBtn" onclick="saveRcWbs()">Simpan WBS</button></div>
+      </div>
+    </section>
+
+    <!-- WORKLOAD -->
+    <section class="page" id="page-rcWorkload">
+      <div class="topbar"><div><div class="eyebrow">Resource & Capacity (V1.1)</div><h2>Workload</h2></div></div>
+      <div class="filters">
+        <select id="rcWorkloadPeriodType" onchange="renderRcWorkload()"><option value="week">Minggu Ini</option><option value="month">Bulan Ini</option></select>
+      </div>
+      <div class="kpi-row" id="rcWorkloadKpi"></div>
+      <div class="section-card">
+        <h4>Workload by Type</h4>
+        <div style="overflow-x:auto;">
+        <table class="data-tbl">
+          <thead><tr><th>Type</th><th>Planned MD</th><th>Actual MD</th></tr></thead>
+          <tbody id="rcWorkloadByType"></tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- MAN-DAY (Resource Allocation) -->
+    <section class="page" id="page-rcManDay">
+      <div class="topbar"><div><div class="eyebrow">Resource & Capacity (V1.1)</div><h2>Man-Day (Resource Allocation)</h2></div></div>
+      <div class="section-card">
+        <div class="form-grid">
+          <div class="f-field"><label>Project</label><select id="rcMdProject" onchange="renderRcManDayWbsOptions()"></select></div>
+          <div class="f-field"><label>WBS / Activity</label><select id="rcMdWbs" onchange="renderRcManDay()"></select></div>
+        </div>
+      </div>
+      <div class="section-card">
+        <h4>Allocations</h4>
+        <div style="overflow-x:auto;">
+        <table class="data-tbl">
+          <thead><tr><th>Engineer</th><th>Role</th><th>Plan MD</th><th>Actual MD</th></tr></thead>
+          <tbody id="rcManDayTableBody"></tbody>
+        </table>
+        </div>
+        <p style="font-size:12px; color:var(--mute); margin-top:8px;">Total Plan MD: <b id="rcManDayTotal">0</b></p>
+      </div>
+      <div class="section-card">
+        <h4>Add Allocation</h4>
+        <div class="form-grid">
+          <div class="f-field"><label>Engineer</label><select id="rcMdEngineer"></select></div>
+          <div class="f-field"><label>Role</label><select id="rcMdRole"><option>PIC</option><option>SUPPORT</option></select></div>
+          <div class="f-field"><label>Plan Man-Day</label><input type="number" id="rcMdPlanMd" min="0" step="0.5"></div>
+        </div>
+        <div class="form-actions"><button class="btn btn-dark" id="rcMdSaveBtn" onclick="saveRcManDay()">Simpan</button></div>
+      </div>
+    </section>
+
+    <!-- CAPACITY -->
+    <section class="page" id="page-rcCapacity">
+      <div class="topbar"><div><div class="eyebrow">Resource & Capacity (V1.1)</div><h2>Capacity</h2></div></div>
+      <div class="filters">
+        <select id="rcCapacityPeriodType" onchange="renderRcCapacity()"><option value="week">Minggu Ini</option><option value="month">Bulan Ini</option></select>
+      </div>
+      <div class="kpi-row" id="rcCapacityKpi"></div>
+      <div class="section-card">
+        <h4>Engineer Loading</h4>
+        <div style="overflow-x:auto;">
+        <table class="data-tbl">
+          <thead><tr><th>Engineer</th><th>Planned MD</th><th>Available MD</th><th>Overload MD</th><th>Status</th></tr></thead>
+          <tbody id="rcEngineerLoadingBody"></tbody>
+        </table>
+        </div>
+      </div>
+      <div class="section-card">
+        <h4>Skill Loading</h4>
+        <div style="overflow-x:auto;">
+        <table class="data-tbl">
+          <thead><tr><th>Skill</th><th>Planned MD</th><th>Actual MD</th></tr></thead>
+          <tbody id="rcSkillLoadingBody"></tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- MANPOWER ANALYSIS -->
+    <section class="page" id="page-rcManpower">
+      <div class="topbar"><div><div class="eyebrow">Resource & Capacity (V1.1)</div><h2>Manpower Analysis</h2></div></div>
+      <div class="filters">
+        <select id="rcMpPeriodType" onchange="renderRcManpower()"><option value="week">Minggu Ini</option><option value="month">Bulan Ini</option></select>
+      </div>
+      <div class="kpi-row" id="rcMpKpi"></div>
+      <div class="section-card" style="background:linear-gradient(135deg,#16223F,#1E2C52); color:#fff; border:none;">
+        <div style="font-size:12.5px; color:#B7C1E6; line-height:1.7;" id="rcMpNote">Indicative Additional MP adalah hasil perhitungan sistem berdasarkan workload aktual — BUKAN rekomendasi HR. Management Baseline (+8) adalah referensi keputusan management dan tidak pernah ditimpa oleh perhitungan sistem.</div>
       </div>
     </section>
 

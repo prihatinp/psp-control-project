@@ -161,7 +161,7 @@ function initLoginOptions() {
   });
 }
 function initSelects() {
-  ['npPic', 'npSupport', 'duEngineer', 'qEngineer', 'sjPic', 'gsPic', 'pmExtPic2', 'pmIntPic2'].forEach(id => {
+  ['npPic', 'npSupport', 'duEngineer', 'qEngineer', 'sjPic', 'gsPic', 'pmExtPic2', 'pmIntPic2', 'rcWbsPic', 'rcMdEngineer'].forEach(id => {
     const sel = document.getElementById(id); sel.innerHTML = '';
     TEAM.forEach(t => { const o = document.createElement('option'); o.value = t.name; o.textContent = t.name; sel.appendChild(o); });
   });
@@ -242,6 +242,11 @@ function goPage(p) {
   if (p === 'pmExternal') renderPmExternal();
   if (p === 'pmInternal') renderPmInternal();
   if (p === 'pmAddNew') renderPmAddNew();
+  if (p === 'rcWbs') renderRcWbsPage();
+  if (p === 'rcWorkload') renderRcWorkload();
+  if (p === 'rcManDay') renderRcManDayPage();
+  if (p === 'rcCapacity') renderRcCapacity();
+  if (p === 'rcManpower') renderRcManpower();
 }
 
 /* ============ STATUS LOGIC ============ */
@@ -943,4 +948,166 @@ function savePmProject(type) {
     toast((type === 'EXTERNAL' ? 'External' : 'Internal') + ' project "' + res.project.name + '" berhasil ditambahkan');
     goPage(type === 'EXTERNAL' ? 'pmExternal' : 'pmInternal');
   }).catch(err => { btn.disabled = false; btn.textContent = 'Simpan'; toast('Error: ' + err.message, true); });
+}
+
+/* ============================================================
+ *  RESOURCE & CAPACITY V1.1 (Phase 3 — additive foundation).
+ *  Requires backend/production/*.gs (Phase 3) to be deployed to
+ *  PSP_API_URL; until then these calls return "Aksi tidak dikenal"
+ *  and the existing toast() error path shows it.
+ * ============================================================ */
+let rcWbsRows = [];
+
+function rcProjectOptionsHtml() {
+  return pmProjects.map(p => `<option value="${p.id}">${p.no ? p.no + ' — ' : ''}${escapeHTML(p.name)}</option>`).join('');
+}
+
+/* ---- WBS ---- */
+function renderRcWbsPage() {
+  loadProjectMasterList().then(() => {
+    const sel = document.getElementById('rcWbsProject');
+    sel.innerHTML = rcProjectOptionsHtml();
+    if (sel.value) renderRcWbsTree();
+  });
+}
+function renderRcWbsTree() {
+  const projectId = document.getElementById('rcWbsProject').value;
+  const treeEl = document.getElementById('rcWbsTree');
+  const parentSel = document.getElementById('rcWbsParent');
+  if (!projectId) { treeEl.innerHTML = emptyHTML('Pilih project terlebih dahulu.'); return; }
+  apiPost('getActivities', { projectId }).then(res => {
+    rcWbsRows = (res && res.wbs) || [];
+    parentSel.innerHTML = '<option value="">— Top level —</option>' +
+      rcWbsRows.map(w => `<option value="${w.id}">${'— '.repeat(w.level)}${escapeHTML(w.name)}</option>`).join('');
+    if (!rcWbsRows.length) { treeEl.innerHTML = emptyHTML('Belum ada WBS untuk project ini.'); return; }
+    treeEl.innerHTML = rcWbsRows.map(w => `<div style="padding:6px 0 6px ${(w.level - 1) * 20}px; border-bottom:1px dashed var(--line); font-size:12.5px; display:flex; justify-content:space-between;">
+      <span>${w.level > 1 ? '↳ ' : ''}<b>${escapeHTML(w.name)}</b> <span style="color:var(--mute);">${escapeHTML(w.type || '')}</span></span>
+      <span><span class="status-pill" style="background:var(--blue-soft); color:var(--blue);">${escapeHTML(w.status)}</span> <span style="color:var(--mute);">${w.planManDay} MD</span></span>
+    </div>`).join('');
+  }).catch(err => toast('Error memuat WBS: ' + err.message, true));
+}
+function saveRcWbs() {
+  const projectId = document.getElementById('rcWbsProject').value;
+  const name = document.getElementById('rcWbsName').value.trim();
+  if (!projectId) { alert('Pilih project terlebih dahulu.'); return; }
+  if (!name) { alert('Name wajib diisi.'); return; }
+  const btn = document.getElementById('rcWbsSaveBtn'); btn.disabled = true; btn.textContent = 'Menyimpan...';
+  apiPost('createWBS', {
+    projectId, parentId: document.getElementById('rcWbsParent').value || '', name,
+    type: document.getElementById('rcWbsType').value.trim(), pic: document.getElementById('rcWbsPic').value,
+    skill: document.getElementById('rcWbsSkill').value.trim(),
+    startDate: document.getElementById('rcWbsStart').value, targetDate: document.getElementById('rcWbsTarget').value,
+    planManDay: document.getElementById('rcWbsPlanMd').value || 0
+  }).then(res => {
+    btn.disabled = false; btn.textContent = 'Simpan WBS';
+    if (!res.ok) { toast(res.message || 'Gagal menyimpan WBS', true); return; }
+    ['rcWbsName', 'rcWbsType', 'rcWbsSkill', 'rcWbsStart', 'rcWbsTarget', 'rcWbsPlanMd'].forEach(id => document.getElementById(id).value = '');
+    toast('WBS "' + res.wbs.name + '" ditambahkan');
+    renderRcWbsTree();
+  }).catch(err => { btn.disabled = false; btn.textContent = 'Simpan WBS'; toast('Error: ' + err.message, true); });
+}
+
+/* ---- WORKLOAD ---- */
+function renderRcWorkload() {
+  const periodType = document.getElementById('rcWorkloadPeriodType').value;
+  apiPost('getWorkloadSummary', { periodType }).then(res => {
+    if (!res.ok) { toast(res.message || 'Gagal memuat workload', true); return; }
+    document.getElementById('rcWorkloadKpi').innerHTML = `
+      <div class="kpi c-total"><div class="num">${res.totalPlannedMD}</div><div class="lbl">Total Planned MD</div></div>
+      <div class="kpi c-ok"><div class="num">${res.totalActualMD}</div><div class="lbl">Total Actual MD</div></div>
+      <div class="kpi c-warn"><div class="num">${Math.round(res.availableMD * 10) / 10}</div><div class="lbl">Available MD</div></div>
+      <div class="kpi ${res.overloadMD > 0 ? 'c-delay' : 'c-done'}"><div class="num">${res.utilizationPct}%</div><div class="lbl">Utilization</div></div>
+    `;
+    const body = document.getElementById('rcWorkloadByType');
+    body.innerHTML = ['EXTERNAL', 'INTERNAL', 'IRREGULAR'].map(t => `<tr><td>${t}</td><td>${res.byType[t].plannedMD}</td><td>${res.byType[t].actualMD}</td></tr>`).join('');
+  }).catch(err => toast('Error: ' + err.message, true));
+}
+
+/* ---- MAN-DAY (Resource Allocation) ---- */
+function renderRcManDayPage() {
+  loadProjectMasterList().then(() => {
+    document.getElementById('rcMdProject').innerHTML = rcProjectOptionsHtml();
+    renderRcManDayWbsOptions();
+  });
+}
+function renderRcManDayWbsOptions() {
+  const projectId = document.getElementById('rcMdProject').value;
+  const wbsSel = document.getElementById('rcMdWbs');
+  if (!projectId) { wbsSel.innerHTML = ''; return; }
+  apiPost('getActivities', { projectId }).then(res => {
+    const rows = (res && res.wbs) || [];
+    wbsSel.innerHTML = rows.map(w => `<option value="${w.id}">${'— '.repeat(w.level)}${escapeHTML(w.name)}</option>`).join('');
+    renderRcManDay();
+  });
+}
+function renderRcManDay() {
+  const wbsId = document.getElementById('rcMdWbs').value;
+  const body = document.getElementById('rcManDayTableBody');
+  if (!wbsId) { body.innerHTML = ''; document.getElementById('rcManDayTotal').textContent = '0'; return; }
+  apiPost('getResourceAllocation', { wbsId }).then(res => {
+    if (!res.ok) { toast(res.message || 'Gagal memuat alokasi', true); return; }
+    body.innerHTML = res.allocations.length ? res.allocations.map(a =>
+      `<tr><td>${escapeHTML(a.engineer)}</td><td>${escapeHTML(a.role)}</td><td>${a.planManDay}</td><td>${a.actualManDay}</td></tr>`
+    ).join('') : `<tr><td colspan="4" style="text-align:center; color:var(--mute); padding:16px;">Belum ada alokasi.</td></tr>`;
+    document.getElementById('rcManDayTotal').textContent = res.totalPlanManDay;
+  }).catch(err => toast('Error: ' + err.message, true));
+}
+function saveRcManDay() {
+  const wbsId = document.getElementById('rcMdWbs').value;
+  const engineer = document.getElementById('rcMdEngineer').value;
+  if (!wbsId) { alert('Pilih WBS/Activity terlebih dahulu.'); return; }
+  const btn = document.getElementById('rcMdSaveBtn'); btn.disabled = true; btn.textContent = 'Menyimpan...';
+  apiPost('saveResourceAllocation', {
+    wbsId, engineer, role: document.getElementById('rcMdRole').value,
+    planManDay: document.getElementById('rcMdPlanMd').value || 0
+  }).then(res => {
+    btn.disabled = false; btn.textContent = 'Simpan';
+    if (!res.ok) { toast(res.message || 'Gagal menyimpan alokasi', true); return; }
+    document.getElementById('rcMdPlanMd').value = '';
+    toast('Alokasi untuk ' + res.allocation.engineer + ' disimpan');
+    renderRcManDay();
+  }).catch(err => { btn.disabled = false; btn.textContent = 'Simpan'; toast('Error: ' + err.message, true); });
+}
+
+/* ---- CAPACITY ---- */
+function renderRcCapacity() {
+  const periodType = document.getElementById('rcCapacityPeriodType').value;
+  Promise.all([
+    apiPost('getCapacitySummary', { periodType }),
+    apiPost('getEngineerLoading', { periodType }),
+    apiPost('getSkillLoading', { periodType })
+  ]).then(([cap, loading, skill]) => {
+    if (!cap.ok) { toast(cap.message || 'Gagal memuat capacity', true); return; }
+    document.getElementById('rcCapacityKpi').innerHTML = `
+      <div class="kpi c-total"><div class="num">${cap.currentMp}</div><div class="lbl">Current MP</div></div>
+      <div class="kpi c-ok"><div class="num">${cap.grossCapacityMD}</div><div class="lbl">Gross Capacity MD</div></div>
+      <div class="kpi c-warn"><div class="num">${Math.round(cap.netCapacityMD * 10) / 10}</div><div class="lbl">Net Capacity MD</div></div>
+      <div class="kpi c-done"><div class="num">${Math.round(cap.utilizationFactor * 100)}%</div><div class="lbl">Utilization Factor</div></div>
+    `;
+    const engBody = document.getElementById('rcEngineerLoadingBody');
+    engBody.innerHTML = loading.engineers.length ? loading.engineers.map(e => `<tr>
+      <td>${escapeHTML(e.engineer)}</td><td>${e.plannedMD}</td><td>${Math.round(e.availableMD * 10) / 10}</td>
+      <td>${Math.round(e.overloadMD * 10) / 10}</td>
+      <td><span class="status-pill" style="background:${e.status === 'OVERLOAD' ? 'var(--coral-soft)' : 'var(--green-soft)'}; color:${e.status === 'OVERLOAD' ? 'var(--coral)' : 'var(--green)'};">${e.status}</span></td>
+    </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--mute); padding:16px;">Belum ada workload.</td></tr>`;
+    const skillBody = document.getElementById('rcSkillLoadingBody');
+    skillBody.innerHTML = skill.skills.length ? skill.skills.map(s => `<tr><td>${escapeHTML(s.skill)}</td><td>${s.plannedMD}</td><td>${s.actualMD}</td></tr>`).join('') : `<tr><td colspan="3" style="text-align:center; color:var(--mute); padding:16px;">Belum ada data.</td></tr>`;
+  }).catch(err => toast('Error: ' + err.message, true));
+}
+
+/* ---- MANPOWER ANALYSIS ---- */
+function renderRcManpower() {
+  const periodType = document.getElementById('rcMpPeriodType').value;
+  apiPost('getManpowerAnalysis', { periodType }).then(res => {
+    if (!res.ok) { toast(res.message || 'Gagal memuat analisis', true); return; }
+    document.getElementById('rcMpKpi').innerHTML = `
+      <div class="kpi c-total"><div class="num">${res.currentMp}</div><div class="lbl">Current MP</div></div>
+      <div class="kpi c-warn"><div class="num">${Math.round(res.requiredMD * 10) / 10}</div><div class="lbl">Required MD</div></div>
+      <div class="kpi c-ok"><div class="num">${Math.round(res.availableMD * 10) / 10}</div><div class="lbl">Available MD</div></div>
+      <div class="kpi ${res.gapMD > 0 ? 'c-delay' : 'c-done'}"><div class="num">${Math.round(res.gapMD * 10) / 10}</div><div class="lbl">Gap MD</div></div>
+      <div class="kpi c-warn"><div class="num">${res.indicativeAdditionalMP}</div><div class="lbl">Indicative Additional MP<br><span style="font-size:9px;">(system calc, not HR recommendation)</span></div></div>
+      <div class="kpi c-total"><div class="num">+${res.managementBaselineAdditionalMP}</div><div class="lbl">Management Baseline<br><span style="font-size:9px;">(reference only)</span></div></div>
+      <div class="kpi ${res.differenceVsBaseline >= 0 ? 'c-ok' : 'c-warn'}"><div class="num">${res.differenceVsBaseline > 0 ? '+' : ''}${res.differenceVsBaseline}</div><div class="lbl">Difference vs Baseline</div></div>
+    `;
+  }).catch(err => toast('Error: ' + err.message, true));
 }
