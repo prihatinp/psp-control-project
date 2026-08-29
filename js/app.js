@@ -252,6 +252,11 @@ function goPage(p) {
   if (p === 'mpOrg') renderMpOrg();
   if (p === 'mpVacancy') renderMpVacancy();
   if (p === 'mpScenario') renderMpScenario();
+  if (p === 'exDashboard') renderExDashboard();
+  if (p === 'exExternal') renderExExternal();
+  if (p === 'exInternal') renderExInternal();
+  if (p === 'exAttention') renderExAttention();
+  if (p === 'exPreview') renderExPreview();
 }
 
 /* ============ STATUS LOGIC ============ */
@@ -1259,5 +1264,166 @@ function renderMpScenario() {
       <td style="color:${s.overloadMD > 0 ? 'var(--coral)' : 'var(--mute)'};">${s.overloadMD}</td>
       <td style="color:${s.remainingGapMD > 0 ? 'var(--coral)' : 'var(--green)'};">${s.remainingGapMD}</td>
     </tr>`).join('');
+  }).catch(err => toast('Error: ' + err.message, true));
+}
+
+/* ============================================================
+ *  PHASE 5 — EXECUTIVE DASHBOARD + WEEKLY REPORT FOUNDATION
+ *  Every table/card below only ever displays fields the server
+ *  already returns — no client-side risk or health computation.
+ * ============================================================ */
+
+/* ---- EXECUTIVE DASHBOARD (Part A/B/C) ---- */
+function renderExDashboard() {
+  const periodType = document.getElementById('exDashPeriodType').value;
+  apiPost('getExecutiveDashboard', { periodType }).then(res => {
+    if (!res.ok) { toast(res.message || 'Gagal memuat executive dashboard', true); return; }
+    const pf = res.summary.portfolio, pg = res.summary.progress, mp = res.manpower;
+    document.getElementById('exDashPortfolioCards').innerHTML = `
+      <div class="kpi c-total"><div class="num">${pf.totalActive}</div><div class="lbl">Total Project Aktif</div></div>
+      <div class="kpi c-ok"><div class="num">${pf.external}</div><div class="lbl">External</div></div>
+      <div class="kpi c-ok"><div class="num">${pf.internal}</div><div class="lbl">Internal</div></div>
+      <div class="kpi c-warn"><div class="num">${pf.po}</div><div class="lbl">PO</div></div>
+      <div class="kpi c-warn"><div class="num">${pf.execution}</div><div class="lbl">Execution</div></div>
+      <div class="kpi c-done"><div class="num">${pf.completed}</div><div class="lbl">Completed</div></div>
+      <div class="kpi c-total"><div class="num">${pf.onHold}</div><div class="lbl">On Hold</div></div>
+    `;
+    document.getElementById('exDashProgressCards').innerHTML = `
+      <div class="kpi c-done"><div class="num">${pg.onTrack}</div><div class="lbl">On Track (GREEN)</div></div>
+      <div class="kpi c-warn"><div class="num">${pg.atRisk}</div><div class="lbl">At Risk (ORANGE)</div></div>
+      <div class="kpi c-delay"><div class="num">${pg.delayed}</div><div class="lbl">Delayed (RED)</div></div>
+      <div class="kpi c-warn"><div class="num">${pg.withoutRecentUpdate}</div><div class="lbl">Tanpa Update Terbaru</div></div>
+      <div class="kpi c-warn"><div class="num">${pg.nearTargetDate}</div><div class="lbl">Mendekati Target</div></div>
+      <div class="kpi c-delay"><div class="num">${pg.overdue}</div><div class="lbl">Overdue</div></div>
+    `;
+    document.getElementById('exDashManpowerCards').innerHTML = `
+      <div class="kpi c-total"><div class="num">${mp.currentMp}</div><div class="lbl">Current MP</div></div>
+      <div class="kpi c-warn"><div class="num">${mp.requiredMp}</div><div class="lbl">Required MP<br><span style="font-size:9px;">(calculated)</span></div></div>
+      <div class="kpi ${mp.additionalMp > 0 ? 'c-delay' : 'c-done'}"><div class="num">${mp.additionalMp}</div><div class="lbl">Indicative Additional MP<br><span style="font-size:9px;">(not an HR decision)</span></div></div>
+      <div class="kpi c-total"><div class="num">+${mp.managementBaselineMp}</div><div class="lbl">Management Baseline<br><span style="font-size:9px;">(reference only)</span></div></div>
+      <div class="kpi c-ok"><div class="num">${mp.managementTargetMp}</div><div class="lbl">Management Target MP<br><span style="font-size:9px;">Current + Baseline</span></div></div>
+      <div class="kpi ${mp.utilizationPct > 100 ? 'c-delay' : 'c-done'}"><div class="num">${mp.utilizationPct}%</div><div class="lbl">Utilization</div></div>
+      <div class="kpi ${mp.overloadedEngineers > 0 ? 'c-delay' : 'c-done'}"><div class="num">${mp.overloadedEngineers}</div><div class="lbl">Overload Engineers</div></div>
+    `;
+    const gs = res.globalSupport;
+    document.getElementById('exDashGlobalSupport').innerHTML = `
+      <div style="font-size:12.5px; line-height:1.9;">
+        Active: <b>${gs.activeExternal}</b> &nbsp;|&nbsp; PO: <b>${gs.po}</b> &nbsp;|&nbsp; RFQ: <b>${gs.rfq}</b> &nbsp;|&nbsp; Execution: <b>${gs.execution}</b><br>
+        Butuh update customer: <b style="color:${gs.requiringCustomerUpdate > 0 ? 'var(--coral)' : 'var(--green)'};">${gs.requiringCustomerUpdate}</b>
+      </div>
+      ${gs.byCustomer.length ? '<div style="margin-top:8px;">' + gs.byCustomer.map(c => `<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed var(--line); font-size:12px;"><span>${escapeHTML(c.customer)}</span><b>${c.count}</b></div>`).join('') + '</div>' : ''}
+    `;
+    const gl = res.globalSupportLegacy;
+    document.getElementById('exDashGlobalSupportLegacy').innerHTML = `
+      <p style="font-size:11px; color:var(--mute);">${escapeHTML(gl.note)}</p>
+      <div style="font-size:12.5px;">Total: <b>${gl.total}</b></div>
+      ${Object.keys(gl.byStatus).map(k => `<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed var(--line); font-size:12px;"><span>${escapeHTML(k)}</span><b>${gl.byStatus[k]}</b></div>`).join('')}
+    `;
+  }).catch(err => toast('Error: ' + err.message, true));
+}
+
+/* ---- EXTERNAL WEEKLY REPORT (Part G/H/K) ---- */
+function renderExExternal() {
+  const week = document.getElementById('exExtWeek').value;
+  const view = document.getElementById('exExtView').value;
+  apiPost('getExternalWeeklyReport', week ? { week } : {}).then(res => {
+    if (!res.ok) { toast(res.message || 'Gagal memuat external weekly report', true); return; }
+    const s = res.summary;
+    document.getElementById('exExtKpi').innerHTML = `
+      <div class="kpi c-total"><div class="num">${s.totalActiveProject}</div><div class="lbl">Total Active</div></div>
+      <div class="kpi c-warn"><div class="num">${s.poProject}</div><div class="lbl">PO</div></div>
+      <div class="kpi c-done"><div class="num">${s.projectCompleted}</div><div class="lbl">Completed</div></div>
+      <div class="kpi c-done"><div class="num">${s.projectOnTrack}</div><div class="lbl">On Track</div></div>
+      <div class="kpi c-warn"><div class="num">${s.projectAtRisk}</div><div class="lbl">At Risk</div></div>
+      <div class="kpi c-delay"><div class="num">${s.projectDelayed}</div><div class="lbl">Delayed</div></div>
+    `;
+    const rows = view === 'customer' ? res.customerFacingProjects : res.projects;
+    const head = view === 'customer'
+      ? ['Customer', 'Plant', 'No', 'Nama Project', 'PIC', 'Status', 'Progress', 'Current Activity', 'Plan Minggu Ini', 'Actual', 'Problem', 'Next Action', 'Target', 'Schedule Status']
+      : ['Customer', 'Plant', 'No', 'Nama Project', 'PIC', 'Status', 'Progress', 'Current Activity', 'Plan Minggu Ini', 'Actual', 'Problem', 'Next Action', 'Target', 'Schedule Status', 'Risk', 'MD Plan', 'MD Actual'];
+    document.getElementById('exExtTableHead').innerHTML = head.map(h => `<th>${h}</th>`).join('');
+    document.getElementById('exExtTableBody').innerHTML = rows.length ? rows.map(r => {
+      const cells = [
+        escapeHTML(r.customer || ''), escapeHTML(r.plant || ''), escapeHTML(r.projectNo || ''), escapeHTML(r.projectName || ''),
+        escapeHTML(r.pic || ''), escapeHTML(r.status || ''), r.overallProgress + '%', escapeHTML(r.currentActivity || ''),
+        escapeHTML(r.plannedThisWeek || ''), escapeHTML(r.actualThisWeek || ''), escapeHTML(r.problem || ''), escapeHTML(r.nextAction || ''),
+        escapeHTML(r.targetDate || ''), `<span class="status-pill" style="background:${r.scheduleStatus === 'DELAYED' ? 'var(--coral-soft)' : r.scheduleStatus === 'AT RISK' ? 'var(--amber-soft)' : 'var(--green-soft)'}; color:${r.scheduleStatus === 'DELAYED' ? 'var(--coral)' : r.scheduleStatus === 'AT RISK' ? 'var(--amber)' : 'var(--green)'};">${r.scheduleStatus}</span>`
+      ];
+      if (view !== 'customer') cells.push(escapeHTML(r.riskLevel || ''), r.manDayPlanned, r.manDayActual);
+      return '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
+    }).join('') : `<tr><td colspan="${head.length}" style="text-align:center; color:var(--mute); padding:16px;">Belum ada external project pada periode ini.</td></tr>`;
+  }).catch(err => toast('Error: ' + err.message, true));
+}
+
+/* ---- INTERNAL WEEKLY REPORT (Part I) ---- */
+function renderExInternal() {
+  const week = document.getElementById('exIntWeek').value;
+  apiPost('getInternalWeeklyReport', week ? { week } : {}).then(res => {
+    if (!res.ok) { toast(res.message || 'Gagal memuat internal weekly report', true); return; }
+    document.getElementById('exIntTableBody').innerHTML = res.projects.length ? res.projects.map(p => `<tr>
+      <td>${escapeHTML(p.projectNo || '')}</td><td>${escapeHTML(p.projectName || '')}</td><td>${escapeHTML(p.pic || '')}</td>
+      <td>${escapeHTML(p.status || '')}</td><td>${p.progress}%</td><td>${p.wbsCount}</td>
+      <td>${escapeHTML(p.plannedThisWeek || '')}</td><td>${escapeHTML(p.actualThisWeek || '')}</td>
+      <td>${escapeHTML(p.problem || '')}</td><td>${escapeHTML(p.nextAction || '')}</td>
+      <td>${p.manDayPlanned}</td><td>${p.manDayActual}</td>
+      <td>${p.loading ? escapeHTML(p.loading.status) : '-'}</td>
+      <td><span class="status-pill">${escapeHTML(p.riskLevel || '')}</span></td>
+    </tr>`).join('') : `<tr><td colspan="14" style="text-align:center; color:var(--mute); padding:16px;">Belum ada internal project.</td></tr>`;
+    const irr = res.irregularJobs;
+    document.getElementById('exIntIrregularBody').innerHTML = irr.byCategory.length ? irr.byCategory.map(c => `<tr>
+      <td>${escapeHTML(c.category)}</td><td>${c.count}</td><td>${c.manDay}</td>
+    </tr>`).join('') : `<tr><td colspan="3" style="text-align:center; color:var(--mute); padding:16px;">Tidak ada irregular job pada periode ini.</td></tr>`;
+    document.getElementById('exIntIrregularTotal').textContent = `Total: ${irr.totalCount} job, ${irr.totalManDay} Man-Day (dibaca langsung dari SupportJobs — tidak ada duplikasi data).`;
+  }).catch(err => toast('Error: ' + err.message, true));
+}
+
+/* ---- PROJECTS NEED ATTENTION (Part L) ---- */
+function renderExAttention() {
+  apiPost('getProjectsNeedAttention', {}).then(res => {
+    if (!res.ok) { toast(res.message || 'Gagal memuat attention list', true); return; }
+    const grid = document.getElementById('exAttentionGrid');
+    if (!res.projects.length) { grid.innerHTML = emptyHTML('Tidak ada project yang memerlukan perhatian saat ini.'); return; }
+    const riskColor = { CRITICAL: 'coral', 'AT RISK': 'amber', WATCH: 'amber' };
+    grid.innerHTML = res.projects.map(p => `<div class="proj-card" style="cursor:default;">
+      <div class="proj-head">
+        <div><div class="proj-name">#${p.priority} ${escapeHTML(p.projectName || '')}</div><div style="font-size:11px; color:var(--mute);">${escapeHTML(p.projectNo || '')} — PIC ${escapeHTML(p.pic || '-')}</div></div>
+        <span class="status-pill" style="background:var(--${riskColor[p.riskLevel] || 'coral'}-soft); color:var(--${riskColor[p.riskLevel] || 'coral'});">${escapeHTML(p.riskLevel)}</span>
+      </div>
+      <div style="font-size:12.5px; margin-top:8px;"><b>Alasan:</b> ${escapeHTML(p.reason || '')}</div>
+      <div style="font-size:12.5px; margin-top:4px;"><b>Rekomendasi:</b> ${escapeHTML(p.recommendedAction || '')}</div>
+      <div style="font-size:11px; color:var(--mute); margin-top:8px;">Status ${escapeHTML(p.status || '-')} · Target ${escapeHTML(p.target || '-')}</div>
+    </div>`).join('');
+  }).catch(err => toast('Error: ' + err.message, true));
+}
+
+/* ---- REPORTING PREVIEW (Part M) ---- */
+function renderExPreview() {
+  apiPost('getReportingPreview', {}).then(res => {
+    if (!res.ok) { toast(res.message || 'Gagal memuat reporting preview', true); return; }
+    const pf = res.summary.portfolio, pg = res.summary.progress;
+    document.getElementById('exPreviewPortfolioCards').innerHTML = `
+      <div class="kpi c-total"><div class="num">${pf.totalActive}</div><div class="lbl">Total Project Aktif</div></div>
+      <div class="kpi c-ok"><div class="num">${pf.external}</div><div class="lbl">External</div></div>
+      <div class="kpi c-ok"><div class="num">${pf.internal}</div><div class="lbl">Internal</div></div>
+      <div class="kpi c-done"><div class="num">${pg.onTrack}</div><div class="lbl">On Track</div></div>
+      <div class="kpi c-warn"><div class="num">${pg.atRisk}</div><div class="lbl">At Risk</div></div>
+      <div class="kpi c-delay"><div class="num">${pg.delayed}</div><div class="lbl">Delayed</div></div>
+    `;
+    const ext = res.externalReportSummary;
+    document.getElementById('exPreviewExternal').innerHTML = `
+      <div style="font-size:12.5px; line-height:1.9;">
+        Total Active: <b>${ext.totalActiveProject}</b><br>PO: <b>${ext.poProject}</b> · Completed: <b>${ext.projectCompleted}</b><br>
+        On Track: <b>${ext.projectOnTrack}</b> · At Risk: <b>${ext.projectAtRisk}</b> · Delayed: <b>${ext.projectDelayed}</b>
+      </div>`;
+    const intl = res.internalReportSummary;
+    document.getElementById('exPreviewInternal').innerHTML = `
+      <div style="font-size:12.5px; line-height:1.9;">
+        Total Internal Project: <b>${intl.totalProjects}</b><br>
+        Irregular Job: <b>${intl.irregularJobs.totalCount}</b> job, <b>${intl.irregularJobs.totalManDay}</b> Man-Day
+      </div>`;
+    document.getElementById('exPreviewAttention').innerHTML = res.attention.length ? res.attention.map(p => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--line); font-size:12.5px;">
+        <span>#${p.priority} <b>${escapeHTML(p.projectName || '')}</b> (${escapeHTML(p.projectNo || '')})</span>
+        <span class="status-pill">${escapeHTML(p.riskLevel)}</span>
+      </div>`).join('') : emptyHTML('Tidak ada project yang memerlukan perhatian saat ini.');
   }).catch(err => toast('Error: ' + err.message, true));
 }
