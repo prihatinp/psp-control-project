@@ -930,6 +930,7 @@ function savePmProject(type) {
     payload = {
       type: 'EXTERNAL',
       customer: document.getElementById('pmExtCustomer').value.trim(),
+      country: document.getElementById('pmExtCountry').value.trim(),
       rfqNo: document.getElementById('pmExtRfqNo').value.trim(),
       rfqDate: document.getElementById('pmExtRfqDate').value,
       name, note: document.getElementById('pmExtNote').value.trim(),
@@ -1311,7 +1312,21 @@ function renderExDashboard() {
         Active: <b>${gs.activeExternal}</b> &nbsp;|&nbsp; PO: <b>${gs.po}</b> &nbsp;|&nbsp; RFQ: <b>${gs.rfq}</b> &nbsp;|&nbsp; Execution: <b>${gs.execution}</b><br>
         Butuh update customer: <b style="color:${gs.requiringCustomerUpdate > 0 ? 'var(--coral)' : 'var(--green)'};">${gs.requiringCustomerUpdate}</b>
       </div>
-      ${gs.byCustomer.length ? '<div style="margin-top:8px;">' + gs.byCustomer.map(c => `<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed var(--line); font-size:12px;"><span>${escapeHTML(c.customer)}</span><b>${c.count}</b></div>`).join('') + '</div>' : ''}
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px;">
+        <div>
+          <div style="font-size:10.5px; color:var(--mute); text-transform:uppercase; margin-bottom:4px;">By Customer</div>
+          ${gs.byCustomer.length ? gs.byCustomer.map(c => `<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed var(--line); font-size:12px;"><span>${escapeHTML(c.customer)}</span><b>${c.count}</b></div>`).join('') : '<span style="font-size:11px; color:var(--mute);">-</span>'}
+        </div>
+        <div>
+          <div style="font-size:10.5px; color:var(--mute); text-transform:uppercase; margin-bottom:4px;">By Country</div>
+          ${gs.byCountry.length ? gs.byCountry.map(c => `<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed var(--line); font-size:12px;"><span>${escapeHTML(c.country)}</span><b>${c.count}</b></div>`).join('') : '<span style="font-size:11px; color:var(--mute);">-</span>'}
+        </div>
+      </div>
+    `;
+    const dq = res.dataQuality;
+    document.getElementById('exDashDataQuality').innerHTML = `
+      <span class="status-pill" style="background:${dq.status === 'OK' ? 'var(--green-soft)' : 'var(--amber-soft)'}; color:${dq.status === 'OK' ? 'var(--green)' : 'var(--amber)'};">DATA QUALITY ${dq.status}</span>
+      <span style="font-size:12px; color:var(--mute); margin-left:8px;">${dq.totalIssues} issue(s) — ${dq.bySeverity.ERROR || 0} error, ${dq.bySeverity.WARNING || 0} warning, ${dq.bySeverity.INFO || 0} info</span>
     `;
     const gl = res.globalSupportLegacy;
     document.getElementById('exDashGlobalSupportLegacy').innerHTML = `
@@ -1339,12 +1354,12 @@ function renderExExternal() {
     `;
     const rows = view === 'customer' ? res.customerFacingProjects : res.projects;
     const head = view === 'customer'
-      ? ['Customer', 'Plant', 'No', 'Nama Project', 'PIC', 'Status', 'Progress', 'Current Activity', 'Plan Minggu Ini', 'Actual', 'Problem', 'Next Action', 'Target', 'Schedule Status']
-      : ['Customer', 'Plant', 'No', 'Nama Project', 'PIC', 'Status', 'Progress', 'Current Activity', 'Plan Minggu Ini', 'Actual', 'Problem', 'Next Action', 'Target', 'Schedule Status', 'Risk', 'MD Plan', 'MD Actual'];
+      ? ['Customer', 'Country', 'Plant', 'No', 'Nama Project', 'PIC', 'Status', 'Progress', 'Current Activity', 'Plan Minggu Ini', 'Actual', 'Problem', 'Next Action', 'Target', 'Schedule Status']
+      : ['Customer', 'Country', 'Plant', 'No', 'Nama Project', 'PIC', 'Status', 'Progress', 'Current Activity', 'Plan Minggu Ini', 'Actual', 'Problem', 'Next Action', 'Target', 'Schedule Status', 'Risk', 'MD Plan', 'MD Actual'];
     document.getElementById('exExtTableHead').innerHTML = head.map(h => `<th>${h}</th>`).join('');
     document.getElementById('exExtTableBody').innerHTML = rows.length ? rows.map(r => {
       const cells = [
-        escapeHTML(r.customer || ''), escapeHTML(r.plant || ''), escapeHTML(r.projectNo || ''), escapeHTML(r.projectName || ''),
+        escapeHTML(r.customer || ''), escapeHTML(r.country || '-'), escapeHTML(r.plant || ''), escapeHTML(r.projectNo || ''), escapeHTML(r.projectName || ''),
         escapeHTML(r.pic || ''), escapeHTML(r.status || ''), r.overallProgress + '%', escapeHTML(r.currentActivity || ''),
         escapeHTML(r.plannedThisWeek || ''), escapeHTML(r.actualThisWeek || ''), escapeHTML(r.problem || ''), escapeHTML(r.nextAction || ''),
         escapeHTML(r.targetDate || ''), `<span class="status-pill" style="background:${r.scheduleStatus === 'DELAYED' ? 'var(--coral-soft)' : r.scheduleStatus === 'AT RISK' ? 'var(--amber-soft)' : 'var(--green-soft)'}; color:${r.scheduleStatus === 'DELAYED' ? 'var(--coral)' : r.scheduleStatus === 'AT RISK' ? 'var(--amber)' : 'var(--green)'};">${r.scheduleStatus}</span>`
@@ -1391,7 +1406,7 @@ function renderExAttention() {
       </div>
       <div style="font-size:12.5px; margin-top:8px;"><b>Alasan:</b> ${escapeHTML(p.reason || '')}</div>
       <div style="font-size:12.5px; margin-top:4px;"><b>Rekomendasi:</b> ${escapeHTML(p.recommendedAction || '')}</div>
-      <div style="font-size:11px; color:var(--mute); margin-top:8px;">Status ${escapeHTML(p.status || '-')} · Target ${escapeHTML(p.target || '-')}</div>
+      <div style="font-size:11px; color:var(--mute); margin-top:8px;">Status ${escapeHTML(p.status || '-')} · Target ${escapeHTML(p.target || '-')} · Source: ${escapeHTML(p.source || '-')}</div>
     </div>`).join('');
   }).catch(err => toast('Error: ' + err.message, true));
 }

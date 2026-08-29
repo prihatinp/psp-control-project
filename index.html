@@ -496,6 +496,7 @@
         <h4>New External / Global Project</h4>
         <div class="form-grid">
           <div class="f-field"><label>Customer / Plant</label><input id="pmExtCustomer" placeholder="mis. Musashi Vietnam"></div>
+          <div class="f-field"><label>Country (opsional)</label><input id="pmExtCountry" placeholder="mis. Vietnam"></div>
           <div class="f-field"><label>RFQ No</label><input id="pmExtRfqNo"></div>
           <div class="f-field"><label>RFQ Date</label><input type="date" id="pmExtRfqDate"></div>
           <div class="f-field"><label>Project Name</label><input id="pmExtName"></div>
@@ -746,8 +747,9 @@
     <!-- EXECUTIVE DASHBOARD -->
     <section class="page" id="page-exDashboard">
       <div class="topbar"><div><div class="eyebrow">Executive & Reporting (V1.1)</div><h2>Executive Dashboard</h2></div></div>
-      <div class="filters">
+      <div class="filters" style="justify-content:space-between; align-items:center;">
         <select id="exDashPeriodType" onchange="renderExDashboard()"><option value="week">Minggu Ini</option><option value="month" selected>Bulan Ini</option></select>
+        <div id="exDashDataQuality"></div>
       </div>
       <div class="kpi-row" id="exDashPortfolioCards"></div>
       <div class="kpi-row" id="exDashProgressCards"></div>
