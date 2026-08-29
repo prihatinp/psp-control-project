@@ -35,7 +35,10 @@ const SHEET_NAMES = {
   GLOBAL: 'GlobalSupport',
   CONFIG: 'Config',
   // --- Phase 2 addition: new sheet, existing keys/values above are untouched ---
-  PROJECT_MASTER: 'PROJECT_MASTER'
+  PROJECT_MASTER: 'PROJECT_MASTER',
+  // --- Phase 3 additions: two new sheets, existing keys/values above are untouched ---
+  WBS: 'WBS',
+  RESOURCE_ALLOCATION: 'RESOURCE_ALLOCATION'
 };
 
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;   // token berlaku 8 jam
@@ -95,6 +98,23 @@ function doPost(e) {
       case 'projectMasterList': return jsonOut_(handleProjectMasterList_(body));
       case 'externalProjectList': return jsonOut_(handleExternalProjectList_());
       case 'migrateLegacyProjects': return jsonOut_(handleMigrateLegacyProjects_(body, auth));
+      // --- Phase 3 additions (WBS + Man-Day + Workload + Capacity foundation).
+      //     Handlers live in WbsWorkload.gs, a separate file in this same project. ---
+      case 'createWBS': return jsonOut_(handleCreateWbs_(body, auth));
+      case 'createActivity': return jsonOut_(handleCreateWbs_(body, auth));
+      case 'updateWBS': return jsonOut_(handleUpdateWbs_(body, auth));
+      case 'updateActivity': return jsonOut_(handleUpdateWbs_(body, auth));
+      case 'deleteWBS': return jsonOut_(handleDeleteWbs_(body, auth));
+      case 'getWBS': return jsonOut_(handleGetWbs_(body));
+      case 'getActivities': return jsonOut_(handleListWbsForProject_(body));
+      case 'listWbsForProject': return jsonOut_(handleListWbsForProject_(body));
+      case 'saveResourceAllocation': return jsonOut_(handleSaveResourceAllocation_(body, auth));
+      case 'getResourceAllocation': return jsonOut_(handleGetResourceAllocation_(body));
+      case 'getWorkloadSummary': return jsonOut_(handleGetWorkloadSummary_(body));
+      case 'getCapacitySummary': return jsonOut_(handleGetCapacitySummary_(body));
+      case 'getEngineerLoading': return jsonOut_(handleGetEngineerLoading_(body));
+      case 'getSkillLoading': return jsonOut_(handleGetSkillLoading_(body));
+      case 'getManpowerAnalysis': return jsonOut_(handleGetManpowerAnalysis_(body));
       default: return jsonOut_({ ok: false, message: 'Aksi tidak dikenal.' });
     }
   } catch (err) {
@@ -266,6 +286,10 @@ function setupSpreadsheet() {
   // --- Phase 2 addition: new sheet + config keys, appended after all legacy setup calls above ---
   setupProjectMasterSheet_();
   ensurePhase2Config_();
+  // --- Phase 3 addition: two new sheets + config keys, appended after Phase 2's calls above ---
+  setupWbsSheet_();
+  setupResourceAllocationSheet_();
+  ensurePhase3Config_();
   getSecret_(); // pastikan HMAC secret sudah dibuat
   const sh1 = ss.getSheetByName('Sheet1');
   if (sh1 && ss.getSheets().length > 1) ss.deleteSheet(sh1);
