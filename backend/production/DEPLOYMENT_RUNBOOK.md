@@ -1,19 +1,47 @@
-# Deployment Runbook — Phase 2 through Phase 5.1 → Real Google Apps Script
+# Deployment Runbook — Phase 2 through Phase 5.3 → Real Google Apps Script
 
 **Status: nothing below has been executed. The real production Apps
 Script backend has NOT been modified or deployed by this repository at
-any point through Phase 5.2.** This is a literal, ordered checklist for a
-human operator to execute manually, split into a **TEST ENVIRONMENT**
-phase and a **PRODUCTION ENVIRONMENT** phase. Do not skip the test phase.
+any point through Phase 5.3.** This is a literal, ordered checklist for a
+human operator to execute manually, in four clearly separated stages:
+
+- **A. Local / repository verification** — nothing here touches Google at all.
+- **B. GAS test-environment deployment** — a throwaway copy of the project and spreadsheet.
+- **C. Production deployment** — the real Apps Script project and spreadsheet.
+- **D. Rollback** — see `ROLLBACK_PLAN.md` (kept as its own document since it applies to both B and C).
+
+Do not skip stage A or B.
 
 ## Before you start
 
-Read `PRODUCTION_READINESS_AUDIT.md` in full. If its release gate
-(`PHASE5.2_FINAL_REPORT.md`) is not GO or GO WITH CONDITIONS, stop here.
+Read `PRODUCTION_READINESS_AUDIT.md` and `PHASE5.3_PRE_PRODUCTION_REPORT.md`
+in full. If the release gate in the latter is not 🟢 GO or 🟡 GO WITH
+CONDITIONS, stop here.
 
 ---
 
-## TEST ENVIRONMENT
+## A. LOCAL / REPOSITORY VERIFICATION
+
+Entirely offline — no Google account, no GAS project, no spreadsheet
+involved. Confirms the release candidate itself before anyone touches
+Google.
+
+### A1. Confirm a clean, reviewed release candidate
+
+- `git status` shows a clean working tree on the branch being released.
+- `diff backend/legacy/Code.gs backend/production/Code.gs` shows only the
+  documented additive hunks (one mechanical comma on the `CONFIG` line,
+  pure `case`/setup-call insertions) — no other line differs.
+- Run every test suite in `backend/production/test/` plus
+  `backend/test/smoke-test.js`. Expected baseline at time of writing:
+  **233/233 passed, 0 failed** (see `PHASE5.3_PRE_PRODUCTION_REPORT.md`
+  for the exact per-suite counts current as of this branch).
+
+Only proceed to stage B once A1 is clean.
+
+---
+
+## B. GAS TEST-ENVIRONMENT DEPLOYMENT
 
 ### M1. Backup current GAS project
 
@@ -106,7 +134,10 @@ Against the test deployment URL, exercise at minimum: `bootstrap`,
 `addProjectMaster` (create a throwaway test project), `createWBS`,
 `saveResourceAllocation`, `getWorkloadSummary`, `getExecutiveDashboard`,
 `getExternalWeeklyReport`. Confirm every response has `ok:true` and a
-shape matching `API_CONTRACT_MATRIX.md`.
+shape matching `API_CONTRACT_MATRIX.md`. For the full 25-item checklist
+(with expected results and evidence fields to fill in), use
+`PHASE5.3_PRE_PRODUCTION_REPORT.md`'s "Deployment Smoke-Test Checklist"
+section — this is the minimum subset, that is the complete one.
 
 ### M12. Run a migration dry-run
 
@@ -161,10 +192,11 @@ works. This proves the rollback plan is real, not theoretical.
 
 ---
 
-## PRODUCTION ENVIRONMENT
+## C. PRODUCTION DEPLOYMENT
 
-Only proceed past this line once every step above has passed in the test
-environment and a human has explicitly approved production deployment.
+Only proceed past this line once every step in stage B has passed in the
+test environment and a human has explicitly approved production
+deployment.
 
 ### M19. Deploy production Web App
 
@@ -189,6 +221,15 @@ the deployed state is always traceable back to a specific, reviewed
 commit. Update `js/app.js`'s `PSP_API_URL` on the **real** GitHub Pages
 site only after M19/M20 pass, and only if the Web App URL actually
 changed (redeploying an existing deployment version keeps the same URL).
+
+---
+
+## D. ROLLBACK
+
+See `ROLLBACK_PLAN.md` for the full, non-destructive rollback procedure —
+kept as its own document because it applies to unwinding either stage B
+(the test environment, freely) or stage C (production, deliberately).
+Rehearsing it against the test environment is stage B's own M18, above.
 
 ---
 
