@@ -484,3 +484,61 @@ function handleGetManpowerAnalysis_(body) {
     differenceVsBaseline: Math.round((indicativeAdditionalMP - baselineMP) * 10) / 10
   };
 }
+
+/* ============================================================
+ *  PHASE 3.1 — DATA QUALITY REPORT (read-only, identifies problems,
+ *  fixes nothing). Every check below traces to one of the 12 items
+ *  requested; "invalid engineer name" and "engineer not existing in
+ *  Team" are the same underlying check (an ENGINEER_NAME with no
+ *  matching Team.Name row), reported under one issue type.
+ * ============================================================ */
+function handleGetDataQualityReport_() {
+  var issues = [];
+  function add(type, severity, entity, id, message) {
+    issues.push({ type: type, severity: severity, entity: entity, id: id, message: message });
+  }
+
+  var teamNames = {};
+  rowsToObjects_(getSheet_(SHEET_NAMES.TEAM)).forEach(function (t) { teamNames[t.Name] = true; });
+  var projects = rowsToObjects_(getSheet_(SHEET_NAMES.PROJECT_MASTER));
+  var projectIds = {};
+  projects.forEach(function (p) { projectIds[p.ID] = true; });
+  var wbsRows = rowsToObjects_(getSheet_(SHEET_NAMES.WBS));
+  var wbsProjectIdsSeen = {};
+  var statusList = getConfigList_('WBS_STATUS_LIST', ['NOT STARTED']);
+
+  wbsRows.forEach(function (w) {
+    wbsProjectIdsSeen[w.PROJECT_ID] = true;
+    if (!w.PIC) add('MISSING_PIC', 'WARNING', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" has no PIC.');
+    if (!w.SKILL) add('MISSING_SKILL', 'INFO', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" has no required skill set.');
+    if (!w.START_DATE) add('MISSING_START_DATE', 'WARNING', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" has no start date — cannot be bucketed into any weekly/monthly workload period.');
+    if (!w.TARGET_DATE) add('MISSING_TARGET_DATE', 'INFO', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" has no target date.');
+    if (Number(w.PLAN_MAN_DAY) < 0) add('NEGATIVE_MAN_DAY', 'ERROR', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" has a negative Plan Man-Day.');
+    if (w.STATUS && statusList.indexOf(w.STATUS) === -1) add('INVALID_STATUS', 'ERROR', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" has status "' + w.STATUS + '", not in Config!WBS_STATUS_LIST.');
+    if (w.PROJECT_ID && !projectIds[w.PROJECT_ID]) add('WBS_WITHOUT_PROJECT', 'ERROR', 'WBS', w.WBS_ID, 'WBS "' + w.NAME + '" references PROJECT_ID "' + w.PROJECT_ID + '", which does not exist in PROJECT_MASTER.');
+  });
+
+  projects.forEach(function (p) {
+    if (!p.PIC) add('MISSING_PIC', 'WARNING', 'PROJECT_MASTER', p.ID, 'Project "' + p.Name + '" has no PIC.');
+    if (!wbsProjectIdsSeen[p.ID]) add('PROJECT_WITHOUT_WBS', 'INFO', 'PROJECT_MASTER', p.ID, 'Project "' + p.Name + '" has no WBS rows yet.');
+  });
+
+  var allocRows = rowsToObjects_(getSheet_(SHEET_NAMES.RESOURCE_ALLOCATION));
+  var seenAllocKeys = {};
+  allocRows.forEach(function (a) {
+    if (!a.ENGINEER_NAME || !teamNames[a.ENGINEER_NAME]) {
+      add('ENGINEER_NOT_IN_TEAM', 'ERROR', 'RESOURCE_ALLOCATION', a.ALLOC_ID, 'Allocation references engineer "' + (a.ENGINEER_NAME || '(blank)') + '", not found in Team.');
+    }
+    var md = Number(a.PLAN_MAN_DAY);
+    if (md === 0) add('ZERO_MAN_DAY', 'WARNING', 'RESOURCE_ALLOCATION', a.ALLOC_ID, 'Allocation for "' + a.ENGINEER_NAME + '" has 0 Plan Man-Day.');
+    if (md < 0) add('NEGATIVE_MAN_DAY', 'ERROR', 'RESOURCE_ALLOCATION', a.ALLOC_ID, 'Allocation for "' + a.ENGINEER_NAME + '" has negative Plan Man-Day.');
+    var key = a.WBS_ID + '::' + a.ENGINEER_NAME + '::' + (a.ROLE || '');
+    if (seenAllocKeys[key]) add('DUPLICATE_ALLOCATION', 'WARNING', 'RESOURCE_ALLOCATION', a.ALLOC_ID, 'Duplicate allocation: "' + a.ENGINEER_NAME + '" already allocated to this WBS row with the same role.');
+    seenAllocKeys[key] = true;
+  });
+
+  var bySeverity = { ERROR: 0, WARNING: 0, INFO: 0 };
+  issues.forEach(function (i) { bySeverity[i.severity] = (bySeverity[i.severity] || 0) + 1; });
+
+  return { ok: true, totalIssues: issues.length, bySeverity: bySeverity, issues: issues };
+}

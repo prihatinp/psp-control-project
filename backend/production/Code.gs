@@ -115,6 +115,8 @@ function doPost(e) {
       case 'getEngineerLoading': return jsonOut_(handleGetEngineerLoading_(body));
       case 'getSkillLoading': return jsonOut_(handleGetSkillLoading_(body));
       case 'getManpowerAnalysis': return jsonOut_(handleGetManpowerAnalysis_(body));
+      // --- Phase 3.1 addition: read-only data quality report, no schema change ---
+      case 'getDataQualityReport': return jsonOut_(handleGetDataQualityReport_());
       default: return jsonOut_({ ok: false, message: 'Aksi tidak dikenal.' });
     }
   } catch (err) {
