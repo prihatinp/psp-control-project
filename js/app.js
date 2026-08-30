@@ -72,6 +72,7 @@ let currentDetailId = null;
 /* ============ BOOT ============ */
 boot();
 function boot() {
+  showStagingBannerIfActive();
   if (!PSP_API_URL || PSP_API_URL.indexOf('PASTE_URL') !== -1) {
     document.getElementById('loadingOverlay').innerHTML =
       '<div style="max-width:420px; text-align:center; padding:0 20px;">' +
@@ -90,11 +91,31 @@ function boot() {
       document.getElementById('loadingOverlay').style.display = 'none';
       document.getElementById('loginScreen').style.display = 'flex';
       initLoginOptions();
-    }).catch(() => {
+    }).catch(err => {
+      console.error('teamNames fetch failed:', err, 'PSP_API_URL =', PSP_API_URL);
       document.getElementById('loadingOverlay').innerHTML =
-        '<div style="max-width:420px; text-align:center; padding:0 20px;">Gagal terhubung ke server. Periksa PSP_API_URL & koneksi internet.</div>';
+        '<div style="max-width:460px; text-align:center; padding:0 20px;">' +
+        '<div style="font-size:15px; margin-bottom:8px;">Gagal terhubung ke server.</div>' +
+        '<div style="font-size:12.5px; color:#B7C1E6; word-break:break-all;">URL: ' + escapeHTML(PSP_API_URL) + '</div>' +
+        '<div style="font-size:11.5px; color:#8891B5; margin-top:8px;">Cek: (1) halaman ini dibuka lewat http/https, bukan file:// langsung; (2) tidak ada staging override aktif — lihat console; (3) koneksi internet.</div>' +
+        '</div>';
     });
   }
+}
+/** Phase 5.5's staging override is powerful but silent by design (never
+ *  commits a URL) — that silence is a real risk right before a demo: a
+ *  browser left pointed at a staging URL from earlier testing would keep
+ *  failing/behaving differently with zero visual clue. Surface it loudly. */
+function showStagingBannerIfActive() {
+  let staging = null;
+  try { staging = localStorage.getItem('psp_staging_api_url'); } catch (e) { /* ignore */ }
+  if (!staging) return;
+  console.warn('STAGING OVERRIDE ACTIVE — PSP_API_URL is NOT the production URL:', staging);
+  const banner = document.createElement('div');
+  banner.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:99999; background:#B34700; color:#fff; text-align:center; font:600 12.5px/1 -apple-system,sans-serif; padding:8px;';
+  banner.innerHTML = '⚠ STAGING MODE — pointed at a non-production URL. Run <code>localStorage.removeItem(\'psp_staging_api_url\')</code> and reload before any real/BOD use.';
+  document.body.prepend(banner);
+  document.body.style.paddingTop = '34px';
 }
 
 function loadBootstrap(isInitial) {
